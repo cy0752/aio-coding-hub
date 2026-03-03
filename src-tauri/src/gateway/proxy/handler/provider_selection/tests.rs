@@ -28,6 +28,7 @@ fn insert_provider(db: &crate::db::Db, name: &str, enabled: bool) -> providers::
         None,
         None,
         None,
+        None, // note
     )
     .expect("insert provider")
 }

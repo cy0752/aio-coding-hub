@@ -564,6 +564,20 @@ fn ensure_provider_tags(conn: &mut Connection) -> Result<(), String> {
 // ---------------------------------------------------------------------------
 
 fn ensure_provider_note(conn: &mut Connection) -> Result<(), String> {
+    let has_providers_table: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'providers' LIMIT 1",
+            [],
+            |_| Ok(true),
+        )
+        .optional()
+        .map_err(|e| format!("failed to query sqlite_master: {e}"))?
+        .unwrap_or(false);
+
+    if !has_providers_table {
+        return Ok(());
+    }
+
     if !column_exists(conn, "providers", "note")? {
         conn.execute_batch("ALTER TABLE providers ADD COLUMN note TEXT NOT NULL DEFAULT '';")
             .map_err(|e| format!("failed to ensure providers note column: {e}"))?;

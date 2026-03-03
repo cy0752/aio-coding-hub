@@ -843,7 +843,7 @@ pub fn upsert(
 
     let api_key = api_key.map(str::trim).filter(|v| !v.is_empty());
 
-    if !cost_multiplier.is_finite() || cost_multiplier < 0.0 || cost_multiplier > 1000.0 {
+    if !cost_multiplier.is_finite() || !(0.0..=1000.0).contains(&cost_multiplier) {
         return Err(
             "SEC_INVALID_INPUT: cost_multiplier must be within [0, 1000]"
                 .to_string()
@@ -975,6 +975,7 @@ INSERT INTO providers(
                 .transaction()
                 .map_err(|e| db_err!("failed to start transaction: {e}"))?;
 
+            #[allow(clippy::type_complexity)]
             let existing: Option<(String, String, i64, String, String, String, String, String)> = tx
                 .query_row(
                     "SELECT cli_key, api_key_plaintext, priority, claude_models_json, daily_reset_mode, daily_reset_time, tags_json, note FROM providers WHERE id = ?1",
