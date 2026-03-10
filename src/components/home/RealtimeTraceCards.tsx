@@ -30,8 +30,8 @@ export type RealtimeTraceCardsProps = {
   showCustomTooltip: boolean;
 };
 
-const REALTIME_TRACE_EXIT_START_MS = 2200;
-const REALTIME_TRACE_EXIT_ANIM_MS = 700;
+const REALTIME_TRACE_EXIT_START_MS = 1200;
+const REALTIME_TRACE_EXIT_ANIM_MS = 500;
 const REALTIME_TRACE_EXIT_TOTAL_MS =
   REALTIME_TRACE_EXIT_START_MS + REALTIME_TRACE_EXIT_ANIM_MS + 100;
 
@@ -260,13 +260,13 @@ export const RealtimeTraceCards = memo(function RealtimeTraceCards({
             className={cn(
               "transform overflow-hidden transition-all ease-out motion-reduce:transition-none motion-reduce:transform-none",
               isExiting
-                ? "max-h-0 opacity-0 translate-y-1 !mt-0 duration-700"
-                : "max-h-[120px] opacity-100 translate-y-0 duration-700 my-1.5 mx-2"
+                ? "max-h-0 opacity-0 translate-y-1 !mt-0 duration-500"
+                : "max-h-[120px] opacity-100 translate-y-0 duration-500 my-1.5 mx-2"
             )}
           >
             <div
               className={cn(
-                "relative rounded-lg border",
+                "relative rounded-lg border transition-[background-image,border-color] duration-500 ease-out",
                 isInProgress
                   ? "bg-gradient-to-r from-indigo-50/60 to-white dark:from-indigo-900/30 dark:to-slate-800 border-indigo-200/80 dark:border-indigo-700/60 animate-[glow-pulse_2.5s_ease-in-out_infinite] glow-pulse-active"
                   : hasFailover && !statusBadge.isError
@@ -277,7 +277,7 @@ export const RealtimeTraceCards = memo(function RealtimeTraceCards({
               {/* Left accent bar */}
               <div
                 className={cn(
-                  "absolute left-0 top-2 bottom-2 w-1 rounded-r-full",
+                  "absolute left-0 top-2 bottom-2 w-1 rounded-r-full transition-colors duration-500",
                   isInProgress
                     ? "bg-indigo-500"
                     : hasFailover && !statusBadge.isError
