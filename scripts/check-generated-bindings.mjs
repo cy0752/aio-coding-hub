@@ -13,6 +13,13 @@ execFileSync("pnpm", ["tauri:gen-types"], {
   stdio: "inherit",
 });
 
+// Format the freshly generated file so the comparison uses the same style
+// as the committed version (which passes through prettier on pre-commit).
+execFileSync("pnpm", ["exec", "prettier", "--write", bindingsPath], {
+  cwd: repoRoot,
+  stdio: "inherit",
+});
+
 const after = existsSync(bindingsPath) ? readFileSync(bindingsPath, "utf8") : null;
 if (before !== after) {
   console.error("Generated bindings were outdated. Review and commit src/generated/bindings.ts.");
