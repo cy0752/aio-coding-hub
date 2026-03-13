@@ -95,17 +95,23 @@ fn command_output_with_timeout(
     }
 }
 
-fn home_dir(app: &tauri::AppHandle) -> crate::shared::error::AppResult<PathBuf> {
+fn home_dir<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> crate::shared::error::AppResult<PathBuf> {
     app.path()
         .home_dir()
         .map_err(|e| format!("failed to resolve home dir: {e}").into())
 }
 
-fn claude_config_dir(app: &tauri::AppHandle) -> crate::shared::error::AppResult<PathBuf> {
+fn claude_config_dir<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> crate::shared::error::AppResult<PathBuf> {
     Ok(home_dir(app)?.join(".claude"))
 }
 
-fn claude_settings_path(app: &tauri::AppHandle) -> crate::shared::error::AppResult<PathBuf> {
+fn claude_settings_path<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> crate::shared::error::AppResult<PathBuf> {
     Ok(claude_config_dir(app)?.join("settings.json"))
 }
 
@@ -212,8 +218,8 @@ fn patch_claude_env(
     Ok(root)
 }
 
-fn write_claude_env(
-    app: &tauri::AppHandle,
+fn write_claude_env<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
     mcp_timeout_ms: Option<u64>,
     disable_error_reporting: bool,
 ) -> crate::shared::error::AppResult<()> {
@@ -230,7 +236,12 @@ fn write_claude_env(
         "claude_settings_json",
         "settings.json",
     )? {
-        let _ = write_file_atomic_if_changed(&backup_path, &bytes)?;
+        let backup_current = read_optional_file(&backup_path)?;
+        let backup_root = json_root_from_bytes(backup_current);
+        let backup_patched =
+            patch_claude_env(backup_root, mcp_timeout_ms, disable_error_reporting)?;
+        let backup_bytes = json_to_bytes(&backup_patched, "claude/settings.json backup")?;
+        let _ = write_file_atomic_if_changed(&backup_path, &backup_bytes)?;
     }
 
     Ok(())
@@ -542,8 +553,8 @@ pub fn gemini_info_get(app: &tauri::AppHandle) -> crate::shared::error::AppResul
     })
 }
 
-pub fn claude_env_set(
-    app: &tauri::AppHandle,
+pub fn claude_env_set<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
     mcp_timeout_ms: Option<u64>,
     disable_error_reporting: bool,
 ) -> crate::shared::error::AppResult<ClaudeEnvState> {

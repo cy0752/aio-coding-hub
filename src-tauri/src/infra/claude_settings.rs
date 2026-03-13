@@ -120,8 +120,12 @@ use crate::shared::fs::is_symlink;
 
 fn sync_claude_cli_proxy_backup_if_enabled<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
-    next_bytes: &[u8],
+    patch: &ClaudeSettingsPatch,
 ) -> crate::shared::error::AppResult<()> {
+    if !patch_has_updates(patch) {
+        return Ok(());
+    }
+
     let Some(backup_path) = super::cli_proxy::backup_file_path_for_enabled_manifest(
         app,
         "claude",
@@ -132,7 +136,11 @@ fn sync_claude_cli_proxy_backup_if_enabled<R: tauri::Runtime>(
         return Ok(());
     };
 
-    let _ = write_file_atomic_if_changed(&backup_path, next_bytes)?;
+    let current = read_optional_file(&backup_path)?;
+    let root = json_root_from_bytes(current);
+    let patched = patch_claude_settings(root, patch.clone())?;
+    let bytes = json_to_bytes(&patched, "claude/settings.json backup")?;
+    let _ = write_file_atomic_if_changed(&backup_path, &bytes)?;
     Ok(())
 }
 
@@ -585,6 +593,35 @@ fn patch_claude_settings(
     Ok(root)
 }
 
+fn patch_has_updates(patch: &ClaudeSettingsPatch) -> bool {
+    patch.model.is_some()
+        || patch.output_style.is_some()
+        || patch.language.is_some()
+        || patch.always_thinking_enabled.is_some()
+        || patch.show_turn_duration.is_some()
+        || patch.spinner_tips_enabled.is_some()
+        || patch.terminal_progress_bar_enabled.is_some()
+        || patch.respect_gitignore.is_some()
+        || patch.permissions_allow.is_some()
+        || patch.permissions_ask.is_some()
+        || patch.permissions_deny.is_some()
+        || patch.env_mcp_timeout_ms.is_some()
+        || patch.env_mcp_tool_timeout_ms.is_some()
+        || patch.env_experimental_agent_teams.is_some()
+        || patch.env_disable_background_tasks.is_some()
+        || patch.env_disable_terminal_title.is_some()
+        || patch.env_claude_bash_no_login.is_some()
+        || patch.env_claude_code_attribution_header.is_some()
+        || patch.env_claude_code_blocking_limit_override.is_some()
+        || patch.env_claude_code_max_output_tokens.is_some()
+        || patch.env_enable_experimental_mcp_cli.is_some()
+        || patch.env_enable_tool_search.is_some()
+        || patch.env_max_mcp_output_tokens.is_some()
+        || patch.env_claude_code_disable_nonessential_traffic.is_some()
+        || patch.env_claude_code_proxy_resolves_hosts.is_some()
+        || patch.env_claude_code_skip_prompt_history.is_some()
+}
+
 pub fn claude_settings_set<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     patch: ClaudeSettingsPatch,
@@ -600,10 +637,11 @@ pub fn claude_settings_set<R: tauri::Runtime>(
 
     let current = read_optional_file(&path)?;
     let root = json_root_from_bytes(current);
+    let backup_patch = patch.clone();
     let patched = patch_claude_settings(root, patch)?;
     let bytes = json_to_bytes(&patched, "claude/settings.json")?;
     let _ = write_file_atomic_if_changed(&path, &bytes)?;
-    sync_claude_cli_proxy_backup_if_enabled(app, &bytes)?;
+    sync_claude_cli_proxy_backup_if_enabled(app, &backup_patch)?;
     claude_settings_get(app)
 }
 

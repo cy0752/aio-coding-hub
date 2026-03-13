@@ -340,6 +340,16 @@ pub fn cli_manager_claude_settings_set_json<R: tauri::Runtime>(
     serialize_json(state)
 }
 
+pub fn cli_manager_claude_env_set_json<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    mcp_timeout_ms: Option<u64>,
+    disable_error_reporting: bool,
+) -> crate::shared::error::AppResult<serde_json::Value> {
+    let state =
+        crate::infra::cli_manager::claude_env_set(app, mcp_timeout_ms, disable_error_reporting)?;
+    serialize_json(state)
+}
+
 // ---------------------------------------------------------------------------
 // Settings
 // ---------------------------------------------------------------------------
