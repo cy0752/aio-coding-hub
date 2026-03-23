@@ -81,4 +81,17 @@ describe("ui/Button", () => {
     // md size class
     expect(btn).toHaveClass("text-sm");
   });
+
+  it("renders as child when asChild is enabled", () => {
+    render(
+      <Button asChild className="child-button">
+        <a href="/docs">Docs</a>
+      </Button>
+    );
+
+    const link = screen.getByRole("link", { name: "Docs" });
+    expect(link).toHaveAttribute("href", "/docs");
+    expect(link).toHaveClass("child-button");
+    expect(screen.queryByRole("button", { name: "Docs" })).not.toBeInTheDocument();
+  });
 });
