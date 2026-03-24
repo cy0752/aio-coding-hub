@@ -140,4 +140,74 @@ describe("hooks/useUpdateMeta", () => {
     vi.clearAllTimers();
     vi.useRealTimers();
   });
+
+  it("logs and toasts when update check fails even if localStorage write also throws", async () => {
+    vi.resetModules();
+    setTauriRuntime();
+
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+    setItemSpy.mockImplementation(() => {
+      throw new Error("quota");
+    });
+
+    const { queryClient } = await import("../../query/queryClient");
+    queryClient.clear();
+
+    const { updateCheckNow } = await import("../useUpdateMeta");
+
+    vi.mocked(tauriInvoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "plugin:updater|check") throw new Error("check boom");
+      return null as any;
+    });
+
+    expect(await updateCheckNow({ silent: false, openDialogIfUpdate: false })).toBeNull();
+    expect(toast).toHaveBeenCalledWith("检查更新失败：Error: check boom");
+
+    setItemSpy.mockRestore();
+  });
+
+  it("returns null without candidate and reuses the in-flight install promise", async () => {
+    vi.resetModules();
+    setTauriRuntime();
+
+    const { queryClient } = await import("../../query/queryClient");
+    queryClient.clear();
+
+    const mod = await import("../useUpdateMeta");
+    const { updateDownloadAndInstall, useUpdateMeta } = mod;
+
+    const wrapper = ({ children }: any) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useUpdateMeta(), { wrapper });
+
+    expect(await updateDownloadAndInstall()).toBeNull();
+
+    const installDeferred = createDeferred<boolean>();
+    let downloadCalls = 0;
+    queryClient.setQueryData(updaterKeys.check(), { rid: 3 } as any);
+
+    vi.mocked(tauriInvoke).mockImplementation(async (cmd: string, args?: any) => {
+      if (cmd === "plugin:updater|download_and_install") {
+        downloadCalls += 1;
+        args?.onEvent?.__emit?.({ event: "started", data: {} });
+        args?.onEvent?.__emit?.({ event: "progress", data: { chunkLength: 0 } });
+        return installDeferred.promise as any;
+      }
+      return null as any;
+    });
+
+    const firstPromise = updateDownloadAndInstall();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.installTotalBytes).toBeNull();
+
+    const secondPromise = updateDownloadAndInstall();
+    expect(downloadCalls).toBe(1);
+
+    installDeferred.resolve(true);
+    await expect(firstPromise).resolves.toBe(true);
+    await expect(secondPromise).resolves.toBe(true);
+  });
 });

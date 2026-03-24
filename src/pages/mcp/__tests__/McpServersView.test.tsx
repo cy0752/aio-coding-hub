@@ -1,18 +1,94 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
-import { McpServersView } from "../McpServersView";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { toast } from "sonner";
 import {
   useMcpImportFromWorkspaceCliMutation,
   useMcpServerDeleteMutation,
   useMcpServerSetEnabledMutation,
   useMcpServersListQuery,
 } from "../../../query/mcp";
+import { logToConsole } from "../../../services/consoleLog";
 import { createTestQueryClient } from "../../../test/utils/reactQuery";
+import { McpServersView } from "../McpServersView";
 
 vi.mock("sonner", () => ({ toast: vi.fn() }));
 vi.mock("../../../services/consoleLog", () => ({ logToConsole: vi.fn() }));
+
+vi.mock("../../../ui/Button", () => ({
+  Button: ({
+    children,
+    onClick,
+    disabled,
+    variant: _variant,
+    size: _size,
+    className: _className,
+    ...rest
+  }: any) => (
+    <button
+      type="button"
+      data-disabled={disabled ? "true" : "false"}
+      onClick={() => onClick?.()}
+      {...rest}
+    >
+      {children}
+    </button>
+  ),
+}));
+
+vi.mock("../components/McpServerCard", () => ({
+  McpServerCard: ({ server, toggling, onToggleEnabled, onEdit, onDelete }: any) => (
+    <div data-testid={`server-card-${server.id}`}>
+      <span>{server.name}</span>
+      <span>{toggling ? "切换中" : "空闲"}</span>
+      <button type="button" onClick={() => onToggleEnabled(server)}>
+        {`toggle-${server.id}`}
+      </button>
+      <button type="button" onClick={() => onEdit(server)}>
+        {`edit-${server.id}`}
+      </button>
+      <button type="button" onClick={() => onDelete(server)}>
+        {`delete-${server.id}`}
+      </button>
+    </div>
+  ),
+}));
+
+vi.mock("../components/McpServerDialog", () => ({
+  McpServerDialog: ({ open, editTarget, workspaceId, onOpenChange }: any) => (
+    <div
+      data-testid="server-dialog"
+      data-open={open ? "true" : "false"}
+      data-target={editTarget?.name ?? ""}
+      data-workspace-id={String(workspaceId)}
+    >
+      <span>{open ? "dialog-open" : "dialog-closed"}</span>
+      <span>{editTarget ? `editing:${editTarget.name}` : "editing:none"}</span>
+      <button type="button" onClick={() => onOpenChange(false)}>
+        close-server-dialog
+      </button>
+    </div>
+  ),
+}));
+
+vi.mock("../components/McpDeleteDialog", () => ({
+  McpDeleteDialog: ({ target, deleting, onConfirm, onClose }: any) => (
+    <div
+      data-testid="delete-dialog"
+      data-target={target?.name ?? ""}
+      data-deleting={deleting ? "true" : "false"}
+    >
+      <span>{target ? `delete:${target.name}` : "delete:none"}</span>
+      <button type="button" onClick={onConfirm}>
+        confirm-delete
+      </button>
+      <button type="button" onClick={onClose}>
+        close-delete
+      </button>
+    </div>
+  ),
+}));
 
 vi.mock("../../../query/mcp", async () => {
   const actual = await vi.importActual<typeof import("../../../query/mcp")>("../../../query/mcp");
@@ -30,85 +106,314 @@ function renderWithQuery(element: ReactElement) {
   return render(<QueryClientProvider client={client}>{element}</QueryClientProvider>);
 }
 
+function createServer(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 1,
+    server_key: "fetch",
+    name: "Fetch Tool",
+    transport: "http",
+    url: "https://example.com/mcp",
+    enabled: false,
+    command: null,
+    args: [],
+    env: {},
+    cwd: null,
+    headers: {},
+    created_at: 1,
+    updated_at: 1,
+    ...overrides,
+  } as any;
+}
+
+function createMutation(options: { isPending?: boolean } = {}) {
+  return {
+    isPending: options.isPending ?? false,
+    mutateAsync: vi.fn(),
+  };
+}
+
+function mockView(
+  options: {
+    data?: any[] | null;
+    isFetching?: boolean;
+    error?: unknown;
+    toggleMutation?: ReturnType<typeof createMutation>;
+    deleteMutation?: ReturnType<typeof createMutation>;
+    importMutation?: ReturnType<typeof createMutation>;
+  } = {}
+) {
+  const toggleMutation = options.toggleMutation ?? createMutation();
+  const deleteMutation = options.deleteMutation ?? createMutation();
+  const importMutation = options.importMutation ?? createMutation();
+
+  vi.mocked(useMcpServersListQuery).mockReturnValue({
+    data: options.data ?? [],
+    isFetching: options.isFetching ?? false,
+    error: options.error ?? null,
+  } as any);
+  vi.mocked(useMcpServerSetEnabledMutation).mockReturnValue(toggleMutation as any);
+  vi.mocked(useMcpServerDeleteMutation).mockReturnValue(deleteMutation as any);
+  vi.mocked(useMcpImportFromWorkspaceCliMutation).mockReturnValue(importMutation as any);
+
+  return { toggleMutation, deleteMutation, importMutation };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockView();
+});
+
 describe("pages/mcp/McpServersView", () => {
   it("renders empty state when there are no servers", () => {
-    vi.mocked(useMcpServersListQuery).mockReturnValue({
-      data: [],
-      isFetching: false,
-      error: null,
-    } as any);
-    vi.mocked(useMcpServerSetEnabledMutation).mockReturnValue({ isPending: false } as any);
-    vi.mocked(useMcpServerDeleteMutation).mockReturnValue({ isPending: false } as any);
-    vi.mocked(useMcpImportFromWorkspaceCliMutation).mockReturnValue({
-      isPending: false,
-      mutateAsync: vi.fn(),
-    } as any);
-
     renderWithQuery(<McpServersView workspaceId={1} />);
+
     expect(screen.getByText("暂无 MCP 服务")).toBeInTheDocument();
+    expect(screen.getByText("共 0 条")).toBeInTheDocument();
   });
 
-  it("toggles and deletes server entries via mutations", async () => {
-    const server = {
-      id: 1,
-      server_key: "fetch",
-      name: "Fetch Tool",
-      transport: "http",
-      url: "https://example.com/mcp",
-      enabled: false,
-      command: null,
-      args: null,
-      env: null,
-      cwd: null,
-      headers: null,
-    } as any;
+  it("renders loading state and reports list query errors", async () => {
+    mockView({
+      data: null,
+      isFetching: true,
+      error: new Error("boom"),
+    });
 
-    vi.mocked(useMcpServersListQuery).mockReturnValue({
+    renderWithQuery(<McpServersView workspaceId={9} />);
+
+    expect(screen.getAllByText("加载中…")).not.toHaveLength(0);
+
+    await waitFor(() => {
+      expect(logToConsole).toHaveBeenCalledWith("error", "加载 MCP Servers 失败", {
+        error: "Error: boom",
+      });
+    });
+    expect(toast).toHaveBeenCalledWith("加载失败：请查看控制台日志");
+  });
+
+  it("covers toggle pending guard plus success, null, and error branches", async () => {
+    const server = createServer({ id: 7, enabled: true, name: "Runner" });
+
+    const pendingToggle = createMutation({ isPending: true });
+    mockView({
       data: [server],
-      isFetching: false,
-      error: null,
-    } as any);
+      toggleMutation: pendingToggle,
+    });
 
-    const toggleMutation = { isPending: false, mutateAsync: vi.fn() };
-    toggleMutation.mutateAsync.mockResolvedValue({ ...server, enabled: true });
-    vi.mocked(useMcpServerSetEnabledMutation).mockReturnValue(toggleMutation as any);
+    const pendingView = renderWithQuery(<McpServersView workspaceId={1} />);
+    fireEvent.click(screen.getByRole("button", { name: "toggle-7" }));
+    expect(pendingToggle.mutateAsync).not.toHaveBeenCalled();
+    pendingView.unmount();
 
-    const deleteMutation = { isPending: false, mutateAsync: vi.fn() };
-    deleteMutation.mutateAsync.mockResolvedValue(true);
-    vi.mocked(useMcpServerDeleteMutation).mockReturnValue(deleteMutation as any);
-    vi.mocked(useMcpImportFromWorkspaceCliMutation).mockReturnValue({
-      isPending: false,
-      mutateAsync: vi.fn(),
-    } as any);
+    const toggleMutation = createMutation();
+    toggleMutation.mutateAsync
+      .mockResolvedValueOnce({ ...server, enabled: false })
+      .mockResolvedValueOnce(null)
+      .mockRejectedValueOnce(new Error("toggle boom"));
+
+    mockView({
+      data: [server],
+      toggleMutation,
+    });
 
     renderWithQuery(<McpServersView workspaceId={1} />);
 
-    fireEvent.click(screen.getByRole("switch"));
-    await waitFor(() =>
-      expect(toggleMutation.mutateAsync).toHaveBeenCalledWith({ serverId: 1, enabled: true })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "toggle-7" }));
+    await waitFor(() => {
+      expect(toggleMutation.mutateAsync).toHaveBeenNthCalledWith(1, {
+        serverId: 7,
+        enabled: false,
+      });
+    });
+    expect(logToConsole).toHaveBeenCalledWith("info", "切换 MCP Server 生效范围", {
+      id: 7,
+      server_key: "fetch",
+      workspace_id: 1,
+      enabled: false,
+    });
+    expect(toast).toHaveBeenCalledWith("已停用");
 
-    fireEvent.click(screen.getByTitle("删除"));
-    fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
-    await waitFor(() => expect(deleteMutation.mutateAsync).toHaveBeenCalledWith(1));
+    fireEvent.click(screen.getByRole("button", { name: "toggle-7" }));
+    await waitFor(() => {
+      expect(toggleMutation.mutateAsync).toHaveBeenCalledTimes(2);
+    });
+    expect(logToConsole).toHaveBeenCalledTimes(1);
+    expect(toast).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "toggle-7" }));
+    await waitFor(() => {
+      expect(logToConsole).toHaveBeenCalledWith("error", "切换 MCP Server 生效范围失败", {
+        error: "Error: toggle boom",
+        id: 7,
+        workspace_id: 1,
+      });
+    });
+    expect(toast).toHaveBeenCalledWith("操作失败：Error: toggle boom");
   });
 
-  it("imports from workspace CLI when clicking 导入已有", async () => {
-    vi.mocked(useMcpServersListQuery).mockReturnValue({
-      data: [],
-      isFetching: false,
-      error: null,
-    } as any);
-    vi.mocked(useMcpServerSetEnabledMutation).mockReturnValue({ isPending: false } as any);
-    vi.mocked(useMcpServerDeleteMutation).mockReturnValue({ isPending: false } as any);
+  it("covers delete guards plus false, error, success, and manual close branches", async () => {
+    const server = createServer({ id: 3, name: "Delete Me" });
 
-    const importMutation = { isPending: false, mutateAsync: vi.fn() };
-    importMutation.mutateAsync.mockResolvedValue({ inserted: 1, updated: 0, skipped: [] });
-    vi.mocked(useMcpImportFromWorkspaceCliMutation).mockReturnValue(importMutation as any);
+    const pendingDelete = createMutation({ isPending: true });
+    mockView({
+      data: [server],
+      deleteMutation: pendingDelete,
+    });
+
+    const pendingView = renderWithQuery(<McpServersView workspaceId={1} />);
+    fireEvent.click(screen.getByRole("button", { name: "confirm-delete" }));
+    expect(pendingDelete.mutateAsync).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "delete-3" }));
+    fireEvent.click(screen.getByRole("button", { name: "confirm-delete" }));
+    expect(pendingDelete.mutateAsync).not.toHaveBeenCalled();
+    pendingView.unmount();
+
+    const deleteMutation = createMutation();
+    deleteMutation.mutateAsync
+      .mockResolvedValueOnce(false)
+      .mockRejectedValueOnce(new Error("delete boom"))
+      .mockResolvedValueOnce(true);
+
+    mockView({
+      data: [server],
+      deleteMutation,
+    });
 
     renderWithQuery(<McpServersView workspaceId={1} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "delete-3" }));
+    expect(screen.getByText("delete:Delete Me")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "confirm-delete" }));
+    await waitFor(() => {
+      expect(deleteMutation.mutateAsync).toHaveBeenNthCalledWith(1, 3);
+    });
+    expect(logToConsole).not.toHaveBeenCalled();
+    expect(toast).not.toHaveBeenCalled();
+    expect(screen.getByText("delete:Delete Me")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "confirm-delete" }));
+    await waitFor(() => {
+      expect(logToConsole).toHaveBeenCalledWith("error", "删除 MCP Server 失败", {
+        error: "Error: delete boom",
+        id: 3,
+      });
+    });
+    expect(toast).toHaveBeenCalledWith("删除失败：Error: delete boom");
+    expect(screen.getByText("delete:Delete Me")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "confirm-delete" }));
+    await waitFor(() => {
+      expect(logToConsole).toHaveBeenCalledWith("info", "删除 MCP Server", {
+        id: 3,
+        server_key: "fetch",
+      });
+    });
+    expect(toast).toHaveBeenCalledWith("已删除");
+    expect(screen.getByText("delete:none")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "delete-3" }));
+    expect(screen.getByText("delete:Delete Me")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "close-delete" }));
+    expect(screen.getByText("delete:none")).toBeInTheDocument();
+  });
+
+  it("covers import guard, null branch, both summary branches, and error branch", async () => {
+    const pendingImport = createMutation({ isPending: true });
+    mockView({
+      importMutation: pendingImport,
+    });
+
+    const pendingView = renderWithQuery(<McpServersView workspaceId={11} />);
+    expect(screen.getByRole("button", { name: "导入中…" })).toHaveAttribute(
+      "data-disabled",
+      "true"
+    );
+    fireEvent.click(screen.getByRole("button", { name: "导入中…" }));
+    expect(pendingImport.mutateAsync).not.toHaveBeenCalled();
+    pendingView.unmount();
+
+    const importMutation = createMutation();
+    importMutation.mutateAsync
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ inserted: 2, updated: 1 })
+      .mockResolvedValueOnce({
+        inserted: 1,
+        updated: 0,
+        skipped: [{ name: "Fetch Tool", reason: "duplicate" }],
+      })
+      .mockRejectedValueOnce(new Error("import boom"));
+
+    mockView({
+      importMutation,
+    });
+
+    renderWithQuery(<McpServersView workspaceId={11} />);
 
     fireEvent.click(screen.getByRole("button", { name: "导入已有" }));
-    await waitFor(() => expect(importMutation.mutateAsync).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(importMutation.mutateAsync).toHaveBeenCalledTimes(1);
+    });
+    expect(logToConsole).not.toHaveBeenCalled();
+    expect(toast).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "导入已有" }));
+    await waitFor(() => {
+      expect(toast).toHaveBeenCalledWith("导入完成：新增 2，更新 1");
+    });
+    expect(logToConsole).toHaveBeenCalledWith("info", "从当前 CLI 自动导入 MCP 完成", {
+      workspace_id: 11,
+      inserted: 2,
+      updated: 1,
+      skipped: [],
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "导入已有" }));
+    await waitFor(() => {
+      expect(toast).toHaveBeenCalledWith("导入完成：新增 1，更新 0，跳过 1");
+    });
+    expect(logToConsole).toHaveBeenCalledWith("info", "从当前 CLI 自动导入 MCP 完成", {
+      workspace_id: 11,
+      inserted: 1,
+      updated: 0,
+      skipped: [{ name: "Fetch Tool", reason: "duplicate" }],
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "导入已有" }));
+    await waitFor(() => {
+      expect(logToConsole).toHaveBeenCalledWith("error", "从当前 CLI 自动导入 MCP 失败", {
+        error: "Error: import boom",
+        workspace_id: 11,
+      });
+    });
+    expect(toast).toHaveBeenCalledWith("导入失败：Error: import boom");
+  });
+
+  it("opens add and edit dialogs and clears edit target when closing", () => {
+    const server = createServer({ id: 5, name: "Editable Server" });
+    mockView({
+      data: [server],
+    });
+
+    renderWithQuery(<McpServersView workspaceId={1} />);
+
+    expect(screen.getByTestId("server-dialog")).toHaveAttribute("data-open", "false");
+    expect(screen.getByText("editing:none")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "添加 MCP" }));
+    expect(screen.getByTestId("server-dialog")).toHaveAttribute("data-open", "true");
+    expect(screen.getByText("editing:none")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "close-server-dialog" }));
+    expect(screen.getByTestId("server-dialog")).toHaveAttribute("data-open", "false");
+    expect(screen.getByText("editing:none")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "edit-5" }));
+    expect(screen.getByTestId("server-dialog")).toHaveAttribute("data-open", "true");
+    expect(screen.getByText("editing:Editable Server")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "close-server-dialog" }));
+    expect(screen.getByTestId("server-dialog")).toHaveAttribute("data-open", "false");
+    expect(screen.getByText("editing:none")).toBeInTheDocument();
   });
 });

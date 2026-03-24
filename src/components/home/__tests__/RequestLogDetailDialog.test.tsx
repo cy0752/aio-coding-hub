@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { RequestAttemptLog, RequestLogDetail } from "../../../services/requestLogs";
 import { RequestLogDetailDialog } from "../RequestLogDetailDialog";
@@ -64,6 +64,13 @@ function setRequestLogQueryState(overrides: Partial<typeof requestLogQueryState>
   requestLogQueryState.attemptLogsLoading = overrides.attemptLogsLoading ?? false;
 }
 
+function expectMetricValue(label: string, value: string) {
+  const labelNode = screen.getByText(label);
+  const card = labelNode.parentElement as HTMLElement | null;
+  expect(card).not.toBeNull();
+  expect(within(card as HTMLElement).getByText(value)).toBeInTheDocument();
+}
+
 describe("home/RequestLogDetailDialog", () => {
   it("renders loading state and closes via dialog close button", async () => {
     const onSelectLogId = vi.fn();
@@ -107,5 +114,139 @@ describe("home/RequestLogDetailDialog", () => {
 
     expect(screen.queryByText("not-json")).not.toBeInTheDocument();
     expect(screen.getByText("关键指标")).toBeInTheDocument();
+  });
+
+  it("renders not-found state when the selected log detail is unavailable", () => {
+    setRequestLogQueryState({ selectedLog: null, selectedLogLoading: false });
+
+    render(<RequestLogDetailDialog selectedLogId={1} onSelectLogId={vi.fn()} />);
+
+    expect(screen.getByText("未找到记录详情（可能已过期被留存策略清理）。")).toBeInTheDocument();
+  });
+
+  it("hides metrics when no token or timing fields exist and falls back to unknown provider", () => {
+    setRequestLogQueryState({
+      selectedLog: createSelectedLog({
+        status: null,
+        error_code: null,
+        duration_ms: undefined,
+        ttfb_ms: null,
+        input_tokens: null,
+        output_tokens: null,
+        total_tokens: null,
+        cache_read_input_tokens: null,
+        cache_creation_input_tokens: null,
+        cache_creation_5m_input_tokens: null,
+        cache_creation_1h_input_tokens: null,
+        cost_usd: null,
+        final_provider_id: null,
+        final_provider_name: null,
+      }),
+    });
+
+    render(<RequestLogDetailDialog selectedLogId={1} onSelectLogId={vi.fn()} />);
+
+    expect(screen.queryByText("关键指标")).not.toBeInTheDocument();
+    expect(screen.getByText("最终供应商：未知")).toBeInTheDocument();
+    expect(screen.getByText("决策链")).toBeInTheDocument();
+  });
+
+  it("shows failover success and prefers the 1h cache creation metric when present", () => {
+    setRequestLogQueryState({
+      selectedLog: createSelectedLog({
+        status: 200,
+        error_code: null,
+        cache_creation_input_tokens: null,
+        cache_creation_5m_input_tokens: null,
+        cache_creation_1h_input_tokens: 8,
+      }),
+      attemptLogs: [
+        {
+          id: 1,
+          trace_id: "trace-1",
+          cli_key: "claude",
+          attempt_index: 0,
+          provider_id: 11,
+          provider_name: "Alpha",
+          base_url: "https://alpha.example.com",
+          outcome: "failed",
+          status: 502,
+          attempt_started_ms: 100,
+          attempt_duration_ms: 50,
+          created_at: 1000,
+        },
+        {
+          id: 2,
+          trace_id: "trace-1",
+          cli_key: "claude",
+          attempt_index: 1,
+          provider_id: 12,
+          provider_name: "Beta",
+          base_url: "https://beta.example.com",
+          outcome: "succeeded",
+          status: 200,
+          attempt_started_ms: 200,
+          attempt_duration_ms: 80,
+          created_at: 1001,
+        },
+      ],
+    });
+
+    render(<RequestLogDetailDialog selectedLogId={1} onSelectLogId={vi.fn()} />);
+
+    expect(screen.getByText("200 切换后成功")).toBeInTheDocument();
+    expectMetricValue("缓存创建", "8 (1h)");
+  });
+
+  it("uses base cache creation tokens and falls back to dash for missing timing metrics", () => {
+    setRequestLogQueryState({
+      selectedLog: createSelectedLog({
+        duration_ms: undefined,
+        ttfb_ms: null,
+        cache_creation_input_tokens: 2,
+        cache_creation_5m_input_tokens: null,
+        cache_creation_1h_input_tokens: null,
+      }),
+    });
+
+    render(<RequestLogDetailDialog selectedLogId={1} onSelectLogId={vi.fn()} />);
+
+    expectMetricValue("缓存创建", "2");
+    expectMetricValue("TTFB", "—");
+    expectMetricValue("速率", "—");
+  });
+
+  it("keeps zero-valued cache window metrics visible when they are the only cache source", () => {
+    const view = render(<RequestLogDetailDialog selectedLogId={1} onSelectLogId={vi.fn()} />);
+
+    setRequestLogQueryState({
+      selectedLog: createSelectedLog({
+        cache_creation_input_tokens: null,
+        cache_creation_5m_input_tokens: 0,
+        cache_creation_1h_input_tokens: null,
+      }),
+    });
+    view.rerender(<RequestLogDetailDialog selectedLogId={1} onSelectLogId={vi.fn()} />);
+    expectMetricValue("缓存创建", "0 (5m)");
+
+    setRequestLogQueryState({
+      selectedLog: createSelectedLog({
+        cache_creation_input_tokens: null,
+        cache_creation_5m_input_tokens: null,
+        cache_creation_1h_input_tokens: 0,
+      }),
+    });
+    view.rerender(<RequestLogDetailDialog selectedLogId={1} onSelectLogId={vi.fn()} />);
+    expectMetricValue("缓存创建", "0 (1h)");
+
+    setRequestLogQueryState({
+      selectedLog: createSelectedLog({
+        cache_creation_input_tokens: null,
+        cache_creation_5m_input_tokens: null,
+        cache_creation_1h_input_tokens: null,
+      }),
+    });
+    view.rerender(<RequestLogDetailDialog selectedLogId={1} onSelectLogId={vi.fn()} />);
+    expectMetricValue("缓存创建", "—");
   });
 });

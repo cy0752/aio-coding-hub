@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Root } from "react-dom/client";
 
 vi.mock("../services/frontendErrorReporter", async () => {
   const actual = await vi.importActual<typeof import("../services/frontendErrorReporter")>(
@@ -10,18 +11,30 @@ vi.mock("../services/frontendErrorReporter", async () => {
   };
 });
 
+let appRoot: Root | null = null;
+
+async function importMainEntry() {
+  const mainModule = await import("../main");
+  appRoot = mainModule.appRoot;
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  return mainModule;
+}
+
 describe("main entry", () => {
   beforeEach(() => {
     vi.resetModules();
   });
 
+  afterEach(async () => {
+    appRoot?.unmount();
+    appRoot = null;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
   it("renders without crashing", async () => {
     document.body.innerHTML = '<div id="root"></div>';
 
-    await import("../main");
-
-    // React 19 createRoot render is async-ish; assert content eventually appears.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await importMainEntry();
 
     expect(document.getElementById("root")?.innerHTML).toBeTruthy();
   });
@@ -30,7 +43,7 @@ describe("main entry", () => {
     document.body.innerHTML = '<div id="root"></div>';
 
     const reporter = await import("../services/frontendErrorReporter");
-    await import("../main");
+    await importMainEntry();
 
     expect(reporter.installGlobalErrorReporting).toHaveBeenCalled();
   });
