@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { gatewayKeys, requestLogsKeys, usageKeys } from "../query/keys";
+import { logToConsole } from "../services/consoleLog";
 import { gatewayEventNames, subscribeGatewayEvent } from "../services/gatewayEventBus";
 
 const CIRCUIT_INVALIDATE_THROTTLE_MS = 500;
@@ -69,6 +70,25 @@ export function useGatewayQuerySync() {
       if (cancelled) return;
       scheduleInvalidateRequestDerived();
     });
+
+    void Promise.allSettled([circuitSub.ready, statusSub.ready, requestSub.ready]).then(
+      (results) => {
+        if (cancelled) return;
+
+        const subscribeFailed = results.some((result) => result.status === "rejected");
+        if (!subscribeFailed) return;
+
+        circuitSub.unsubscribe();
+        statusSub.unsubscribe();
+        requestSub.unsubscribe();
+
+        const failedResult = results.find((result) => result.status === "rejected");
+        logToConsole("warn", "网关查询同步监听初始化失败", {
+          stage: "useGatewayQuerySync",
+          error: String(failedResult?.status === "rejected" ? failedResult.reason : "unknown"),
+        });
+      }
+    );
 
     return () => {
       cancelled = true;

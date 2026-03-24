@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -51,6 +51,7 @@ function checkFile(filePath) {
 }
 
 for (const root of roots) {
+  if (!existsSync(root)) continue;
   walk(root);
 }
 

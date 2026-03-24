@@ -83,6 +83,19 @@ pub fn init_db<R: tauri::Runtime>(
     crate::infra::db::init(app).map(|_| ())
 }
 
+pub fn app_data_reset<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> crate::shared::error::AppResult<bool> {
+    let state = crate::app::app_state::DbInitState::default();
+    let app_handle = app.clone();
+
+    tauri::async_runtime::block_on(async move {
+        let _ = crate::app::app_state::ensure_db_ready(app_handle.clone(), &state).await?;
+        let _db_reset_guard = crate::app::app_state::prepare_db_reset(&state).await;
+        crate::infra::data_management::app_data_reset(&app_handle)
+    })
+}
+
 pub fn mcp_read_target_bytes<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     cli_key: &str,

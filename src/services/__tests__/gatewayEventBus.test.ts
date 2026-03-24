@@ -17,7 +17,7 @@ describe("services/gatewayEventBus", () => {
     const handler = vi.fn();
 
     const first = subscribeGatewayEvent("gateway:request", handler);
-    await first.ready;
+    await expect(first.ready).rejects.toThrow("listen boom");
     first.unsubscribe();
 
     const second = subscribeGatewayEvent("gateway:request", handler);

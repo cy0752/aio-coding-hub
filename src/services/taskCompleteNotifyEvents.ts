@@ -262,7 +262,14 @@ export async function listenTaskCompleteNotifyEvents(): Promise<() => void> {
       handleRequestComplete(payload);
     }
   );
-  await Promise.all([requestStartSub.ready, requestSub.ready]);
+  const readyResults = await Promise.allSettled([requestStartSub.ready, requestSub.ready]);
+  const subscribeFailed = readyResults.some((result) => result.status === "rejected");
+  if (subscribeFailed) {
+    requestStartSub.unsubscribe();
+    requestSub.unsubscribe();
+    const failedResult = readyResults.find((result) => result.status === "rejected");
+    throw failedResult?.reason ?? new Error("task complete notify subscriptions failed");
+  }
 
   return () => {
     requestStartSub.unsubscribe();

@@ -9,17 +9,50 @@ use crate::{blocking, gateway, settings, wsl};
 use tauri::Emitter;
 use tauri::Manager;
 
-#[tauri::command]
-pub(crate) async fn wsl_detect() -> wsl::WslDetection {
+async fn detect_wsl_blocking(label: &'static str) -> Result<wsl::WslDetection, String> {
     blocking::run(
-        "wsl_detect",
-        move || -> crate::shared::error::AppResult<wsl::WslDetection> { Ok(wsl::detect()) },
+        label,
+        || -> crate::shared::error::AppResult<wsl::WslDetection> { Ok(wsl::detect()) },
     )
     .await
-    .unwrap_or(wsl::WslDetection {
-        detected: false,
-        distros: Vec::new(),
+    .map_err(Into::into)
+}
+
+async fn resolve_wsl_host_blocking(
+    cfg: settings::AppSettings,
+    label: &'static str,
+) -> Result<String, String> {
+    blocking::run(label, move || -> crate::shared::error::AppResult<String> {
+        let host = match cfg.gateway_listen_mode {
+            settings::GatewayListenMode::Localhost => "127.0.0.1".to_string(),
+            settings::GatewayListenMode::WslAuto | settings::GatewayListenMode::Lan => {
+                wsl::resolve_wsl_host(&cfg)
+            }
+            settings::GatewayListenMode::Custom => {
+                let parsed = gateway::listen::parse_custom_listen_address(
+                    &cfg.gateway_custom_listen_address,
+                )?;
+                if gateway::listen::is_wildcard_host(&parsed.host) {
+                    wsl::resolve_wsl_host(&cfg)
+                } else {
+                    parsed.host
+                }
+            }
+        };
+        Ok(host)
     })
+    .await
+    .map_err(Into::into)
+}
+
+#[tauri::command]
+pub(crate) async fn wsl_detect() -> wsl::WslDetection {
+    detect_wsl_blocking("wsl_detect")
+        .await
+        .unwrap_or(wsl::WslDetection {
+            detected: false,
+            distros: Vec::new(),
+        })
 }
 
 #[tauri::command]
@@ -91,7 +124,7 @@ pub(crate) async fn wsl_configure_clients(
         });
     }
 
-    let detection = wsl::detect();
+    let detection = detect_wsl_blocking("wsl_configure_clients_detect").await?;
     if !detection.detected || detection.distros.is_empty() {
         return Ok(wsl::WslConfigureReport {
             ok: false,
@@ -116,31 +149,18 @@ pub(crate) async fn wsl_configure_clients(
         .port
         .ok_or_else(|| "gateway_start returned no port".to_string())?;
 
-    let host = match cfg.gateway_listen_mode {
-        settings::GatewayListenMode::Localhost => "127.0.0.1".to_string(),
-        settings::GatewayListenMode::WslAuto | settings::GatewayListenMode::Lan => {
-            wsl::resolve_wsl_host(&cfg)
-        }
-        settings::GatewayListenMode::Custom => {
-            let parsed = match gateway::listen::parse_custom_listen_address(
-                &cfg.gateway_custom_listen_address,
-            ) {
-                Ok(v) => v,
-                Err(err) => {
-                    return Ok(wsl::WslConfigureReport {
-                        ok: false,
-                        message: format!("自定义监听地址无效：{err}"),
-                        distros: Vec::new(),
-                    });
-                }
-            };
-            if gateway::listen::is_wildcard_host(&parsed.host) {
-                wsl::resolve_wsl_host(&cfg)
-            } else {
-                parsed.host
+    let host =
+        match resolve_wsl_host_blocking(cfg.clone(), "wsl_configure_clients_resolve_host").await {
+            Ok(host) => host,
+            Err(err) if err.starts_with("SEC_INVALID_INPUT:") => {
+                return Ok(wsl::WslConfigureReport {
+                    ok: false,
+                    message: format!("自定义监听地址无效：{err}"),
+                    distros: Vec::new(),
+                });
             }
-        }
-    };
+            Err(err) => return Err(err),
+        };
 
     let proxy_origin = format!("http://{}", gateway::listen::format_host_port(&host, port));
     let distros = detection.distros;
@@ -220,12 +240,7 @@ pub(crate) async fn wsl_auto_sync_core(app: &tauri::AppHandle) -> Result<(), Str
     };
 
     // 3. Detect WSL
-    let detection = blocking::run(
-        "wsl_core_detect",
-        || -> crate::shared::error::AppResult<wsl::WslDetection> { Ok(wsl::detect()) },
-    )
-    .await
-    .map_err(|e| e.to_string())?;
+    let detection = detect_wsl_blocking("wsl_core_detect").await?;
 
     if !detection.detected || detection.distros.is_empty() {
         tracing::debug!("WSL auto-sync core: no WSL environment detected, skipping");
@@ -233,22 +248,7 @@ pub(crate) async fn wsl_auto_sync_core(app: &tauri::AppHandle) -> Result<(), Str
     }
 
     // 4. Resolve host
-    let host = match cfg.gateway_listen_mode {
-        settings::GatewayListenMode::Localhost => "127.0.0.1".to_string(),
-        settings::GatewayListenMode::WslAuto | settings::GatewayListenMode::Lan => {
-            wsl::resolve_wsl_host(&cfg)
-        }
-        settings::GatewayListenMode::Custom => {
-            let parsed =
-                gateway::listen::parse_custom_listen_address(&cfg.gateway_custom_listen_address)
-                    .map_err(|e| format!("invalid custom listen address: {e}"))?;
-            if gateway::listen::is_wildcard_host(&parsed.host) {
-                wsl::resolve_wsl_host(&cfg)
-            } else {
-                parsed.host
-            }
-        }
-    };
+    let host = resolve_wsl_host_blocking(cfg.clone(), "wsl_core_resolve_host").await?;
 
     let proxy_origin = format!("http://{}", gateway::listen::format_host_port(&host, port));
     let targets = cfg.wsl_target_cli;
@@ -356,12 +356,7 @@ pub(crate) async fn wsl_auto_configure_on_startup(
     gateway_port: Option<u16>,
 ) -> Result<(), String> {
     // 1. Detect WSL
-    let detection = blocking::run(
-        "wsl_startup_detect",
-        || -> crate::shared::error::AppResult<wsl::WslDetection> { Ok(wsl::detect()) },
-    )
-    .await
-    .map_err(|e| e.to_string())?;
+    let detection = detect_wsl_blocking("wsl_startup_detect").await?;
 
     if !detection.detected || detection.distros.is_empty() {
         tracing::info!("WSL startup auto-configure: no WSL environment detected, skipping");
@@ -418,23 +413,9 @@ async fn do_wsl_auto_configure(
     .await
     .map_err(|e| e.to_string())?;
 
-    let host = match listen_mode {
-        settings::GatewayListenMode::Localhost => "127.0.0.1".to_string(),
-        settings::GatewayListenMode::WslAuto | settings::GatewayListenMode::Lan => {
-            wsl::resolve_wsl_host(&cfg)
-        }
-        settings::GatewayListenMode::Custom => {
-            let parsed =
-                gateway::listen::parse_custom_listen_address(&cfg.gateway_custom_listen_address)
-                    .map_err(|e| format!("invalid custom listen address: {}", e))?;
-
-            if gateway::listen::is_wildcard_host(&parsed.host) {
-                wsl::resolve_wsl_host(&cfg)
-            } else {
-                parsed.host
-            }
-        }
-    };
+    let mut host_cfg = cfg.clone();
+    host_cfg.gateway_listen_mode = listen_mode;
+    let host = resolve_wsl_host_blocking(host_cfg, "wsl_startup_resolve_host").await?;
 
     let proxy_origin = format!("http://{}", gateway::listen::format_host_port(&host, port));
 

@@ -74,6 +74,7 @@ function ensureListening(event: GatewayEventName, entry: Entry): Promise<void> {
         "gateway:event_bus"
       );
       if (entry.disposed || entry.handlers.size === 0) disposeEntry(event, entry);
+      throw error;
     });
 
   return entry.init;

@@ -202,6 +202,7 @@ export function ProviderEditorDialog(props: ProviderEditorDialogProps) {
   const apiKeyFetchedRef = useRef(false);
   const apiKeyFetchPromiseRef = useRef<Promise<string | null> | null>(null);
   const apiKeyFetchErrorRef = useRef(false);
+  const apiKeyRequestSeqRef = useRef(0);
 
   const [authMode, setAuthMode] = useState<"api_key" | "oauth" | "cx2cc">(
     deriveAuthMode(editProvider)
@@ -219,10 +220,12 @@ export function ProviderEditorDialog(props: ProviderEditorDialogProps) {
     has_refresh_token?: boolean;
   } | null>(null);
   const [oauthLoading, setOauthLoading] = useState(false);
+  const oauthStatusRequestSeqRef = useRef(0);
 
   const form = useForm<ProviderEditorDialogFormInput>({
     defaultValues: DEFAULT_FORM_VALUES,
   });
+  const editProviderSnapshotRef = useRef<ProviderSummary | null>(null);
 
   const { register, reset, setValue, watch, formState } = form;
   const enabled = watch("enabled");
@@ -248,7 +251,24 @@ export function ProviderEditorDialog(props: ProviderEditorDialogProps) {
       : undefined;
 
   useEffect(() => {
-    if (!open) return;
+    if (mode !== "edit" || !open || !editProvider) return;
+    editProviderSnapshotRef.current = editProvider;
+  }, [editProvider, mode, open]);
+
+  useEffect(() => {
+    setFetchingApiKey(false);
+    setOauthLoading(false);
+    apiKeyFetchPromiseRef.current = null;
+
+    if (!open) {
+      setSavedApiKey(null);
+      setOauthStatus(null);
+      return () => {
+        apiKeyRequestSeqRef.current += 1;
+        oauthStatusRequestSeqRef.current += 1;
+        apiKeyFetchPromiseRef.current = null;
+      };
+    }
 
     baseUrlRowSeqRef.current = 1;
     apiKeyFetchedRef.current = false;
@@ -273,48 +293,51 @@ export function ProviderEditorDialog(props: ProviderEditorDialogProps) {
       return;
     }
 
-    const initialAuthMode = deriveAuthMode(props.provider);
+    const snapshot = editProviderSnapshotRef.current;
+    if (!snapshot) return;
+
+    const initialAuthMode = deriveAuthMode(snapshot);
     setAuthMode(initialAuthMode);
-    setSourceProviderId(props.provider.source_provider_id ?? null);
+    setSourceProviderId(snapshot.source_provider_id ?? null);
     setOauthStatus(null);
-    setBaseUrlMode(props.provider.base_url_mode);
-    setBaseUrlRows(props.provider.base_urls.map((url) => newBaseUrlRow(url)));
+    setBaseUrlMode(snapshot.base_url_mode);
+    setBaseUrlRows(snapshot.base_urls.map((url) => newBaseUrlRow(url)));
     setPingingAll(false);
-    setClaudeModels(props.provider.claude_models ?? {});
-    setTags(props.provider.tags ?? []);
+    setClaudeModels(snapshot.claude_models ?? {});
+    setTags(snapshot.tags ?? []);
     setTagInput("");
     reset({
-      name: props.provider.name,
+      name: snapshot.name,
       api_key: "",
       auth_mode: initialAuthMode === "cx2cc" ? "api_key" : initialAuthMode,
-      cost_multiplier: String(props.provider.cost_multiplier ?? 1.0),
-      limit_5h_usd: props.provider.limit_5h_usd != null ? String(props.provider.limit_5h_usd) : "",
-      limit_daily_usd:
-        props.provider.limit_daily_usd != null ? String(props.provider.limit_daily_usd) : "",
-      limit_weekly_usd:
-        props.provider.limit_weekly_usd != null ? String(props.provider.limit_weekly_usd) : "",
+      cost_multiplier: String(snapshot.cost_multiplier ?? 1.0),
+      limit_5h_usd: snapshot.limit_5h_usd != null ? String(snapshot.limit_5h_usd) : "",
+      limit_daily_usd: snapshot.limit_daily_usd != null ? String(snapshot.limit_daily_usd) : "",
+      limit_weekly_usd: snapshot.limit_weekly_usd != null ? String(snapshot.limit_weekly_usd) : "",
       limit_monthly_usd:
-        props.provider.limit_monthly_usd != null ? String(props.provider.limit_monthly_usd) : "",
-      limit_total_usd:
-        props.provider.limit_total_usd != null ? String(props.provider.limit_total_usd) : "",
-      daily_reset_mode: props.provider.daily_reset_mode ?? "fixed",
-      daily_reset_time: props.provider.daily_reset_time ?? "00:00:00",
-      enabled: props.provider.enabled,
-      note: props.provider.note ?? "",
+        snapshot.limit_monthly_usd != null ? String(snapshot.limit_monthly_usd) : "",
+      limit_total_usd: snapshot.limit_total_usd != null ? String(snapshot.limit_total_usd) : "",
+      daily_reset_mode: snapshot.daily_reset_mode ?? "fixed",
+      daily_reset_time: snapshot.daily_reset_time ?? "00:00:00",
+      enabled: snapshot.enabled,
+      note: snapshot.note ?? "",
     });
-    // Only reset form when dialog opens or provider identity changes.
-    // Intentionally omitting props.provider fields to avoid resetting user edits
-    // when the provider object reference changes from a background query refetch.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      apiKeyRequestSeqRef.current += 1;
+      oauthStatusRequestSeqRef.current += 1;
+      apiKeyFetchPromiseRef.current = null;
+    };
   }, [cliKey, createInitialValues, editingProviderId, mode, open, reset]);
 
   useEffect(() => {
     if (!open || mode !== "edit" || !editingProviderId || authMode !== "api_key") return;
     if (apiKeyFetchedRef.current || apiKeyFetchPromiseRef.current) return;
 
+    const requestSeq = ++apiKeyRequestSeqRef.current;
     setFetchingApiKey(true);
     const request = Promise.resolve(providerGetApiKey(editingProviderId))
       .then((key) => {
+        if (apiKeyRequestSeqRef.current !== requestSeq) return null;
         const normalized = key?.trim() ? key : null;
         apiKeyFetchedRef.current = true;
         apiKeyFetchErrorRef.current = false;
@@ -327,10 +350,12 @@ export function ProviderEditorDialog(props: ProviderEditorDialogProps) {
         return normalized;
       })
       .catch(() => {
+        if (apiKeyRequestSeqRef.current !== requestSeq) return null;
         apiKeyFetchErrorRef.current = true;
         return null;
       })
       .finally(() => {
+        if (apiKeyRequestSeqRef.current !== requestSeq) return;
         apiKeyFetchPromiseRef.current = null;
         setFetchingApiKey(false);
       });
@@ -359,10 +384,15 @@ export function ProviderEditorDialog(props: ProviderEditorDialogProps) {
 
   useEffect(() => {
     if (editProvider?.id && editProvider.auth_mode === "oauth") {
+      const requestSeq = ++oauthStatusRequestSeqRef.current;
       providerOAuthStatus(editProvider.id)
-        .then(setOauthStatus)
+        .then((status) => {
+          if (oauthStatusRequestSeqRef.current !== requestSeq) return;
+          setOauthStatus(status);
+        })
         .catch((err) => {
-          logToConsole("error", `加载 OAuth 状态失败：${editProvider.name}`, {
+          if (oauthStatusRequestSeqRef.current !== requestSeq) return;
+          logToConsole("error", "加载 OAuth 状态失败", {
             provider_id: editProvider.id,
             cli_key: editProvider.cli_key,
             error: String(err),
@@ -370,9 +400,7 @@ export function ProviderEditorDialog(props: ProviderEditorDialogProps) {
           toast(`加载 OAuth 状态失败：${String(err)}`);
         });
     }
-    // Re-fetch only when identity or auth mode changes; name/cli_key are for logging only.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editProvider?.id, editProvider?.auth_mode]);
+  }, [editProvider?.auth_mode, editProvider?.cli_key, editProvider?.id]);
 
   function toastFirstSchemaIssue(issues: Array<{ path: Array<PropertyKey>; message: string }>) {
     const orderedFields: Array<keyof ProviderEditorDialogFormInput> = [

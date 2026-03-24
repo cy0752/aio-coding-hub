@@ -2,6 +2,16 @@ mod support;
 
 use support::json_u64;
 
+fn db_related_paths(path: &std::path::Path) -> (std::path::PathBuf, std::path::PathBuf) {
+    let mut wal = path.to_path_buf().into_os_string();
+    wal.push("-wal");
+
+    let mut shm = path.to_path_buf().into_os_string();
+    shm.push("-shm");
+
+    (wal.into(), shm.into())
+}
+
 #[test]
 fn db_disk_usage_after_init() {
     let app = support::TestApp::new();
@@ -69,5 +79,49 @@ fn disk_usage_after_clear_logs() {
     assert!(
         after_total > 0,
         "DB should still have non-zero size after clear"
+    );
+}
+
+#[test]
+fn app_data_reset_removes_db_files_and_allows_reinit() {
+    let app = support::TestApp::new();
+    let handle = app.handle();
+
+    aio_coding_hub_lib::test_support::init_db(&handle).expect("init db");
+
+    let before =
+        aio_coding_hub_lib::test_support::db_disk_usage_json(&handle).expect("usage before reset");
+    assert!(
+        json_u64(&before, "db_bytes") > 0,
+        "db should have non-zero size before reset"
+    );
+
+    let db_path = aio_coding_hub_lib::test_support::db_path(&handle).expect("db path");
+    let (wal_path, shm_path) = db_related_paths(&db_path);
+
+    let reset_ok =
+        aio_coding_hub_lib::test_support::app_data_reset(&handle).expect("reset app data");
+    assert!(reset_ok, "app_data_reset should report success");
+
+    assert!(
+        !db_path.exists(),
+        "db file should be removed after reset: {}",
+        db_path.display()
+    );
+    assert!(
+        !wal_path.exists(),
+        "wal file should be removed after reset: {}",
+        wal_path.display()
+    );
+    assert!(
+        !shm_path.exists(),
+        "shm file should be removed after reset: {}",
+        shm_path.display()
+    );
+
+    aio_coding_hub_lib::test_support::init_db(&handle).expect("re-init db after reset");
+    assert!(
+        db_path.exists(),
+        "db file should be recreated after re-init"
     );
 }

@@ -424,6 +424,57 @@ describe("pages/providers/ProviderEditorDialog", () => {
     await waitFor(() => expect(dialog.getByDisplayValue("sk-secret-123")).toBeInTheDocument());
   });
 
+  it("ignores stale API key responses after switching providers", async () => {
+    let resolveFirst!: (value: string) => void;
+    let resolveSecond!: (value: string) => void;
+    vi.mocked(providerGetApiKey)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirst = resolve;
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveSecond = resolve;
+          })
+      );
+
+    const { rerender } = render(
+      <ProviderEditorDialog
+        mode="edit"
+        open={true}
+        provider={makeProvider({ id: 1, name: "First Provider" })}
+        onSaved={vi.fn()}
+        onOpenChange={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(vi.mocked(providerGetApiKey)).toHaveBeenCalledWith(1));
+
+    rerender(
+      <ProviderEditorDialog
+        mode="edit"
+        open={true}
+        provider={makeProvider({ id: 2, name: "Second Provider" })}
+        onSaved={vi.fn()}
+        onOpenChange={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(vi.mocked(providerGetApiKey)).toHaveBeenCalledWith(2));
+
+    resolveSecond("sk-second-provider");
+    await waitFor(() => expect(screen.getByDisplayValue("sk-second-provider")).toBeInTheDocument());
+
+    resolveFirst("sk-first-provider");
+    await waitFor(() =>
+      expect(screen.queryByDisplayValue("sk-first-provider")).not.toBeInTheDocument()
+    );
+    expect(screen.getByDisplayValue("sk-second-provider")).toBeInTheDocument();
+  });
+
   it("shows full API key inside the input when a saved key exists", async () => {
     vi.mocked(providerGetApiKey).mockResolvedValueOnce("1234567890abcdef");
 
@@ -1497,6 +1548,67 @@ describe("pages/providers/ProviderEditorDialog", () => {
     await waitFor(() => {
       expect(screen.getByText("user@example.com")).toBeInTheDocument();
     });
+  });
+
+  it("ignores stale OAuth status responses after switching providers", async () => {
+    let resolveFirst!: (value: any) => void;
+    let resolveSecond!: (value: any) => void;
+    vi.mocked(providerOAuthStatus)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirst = resolve;
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveSecond = resolve;
+          })
+      );
+
+    const { rerender } = render(
+      <ProviderEditorDialog
+        mode="edit"
+        open={true}
+        provider={makeProvider({ id: 1, name: "First OAuth", auth_mode: "oauth" })}
+        onSaved={vi.fn()}
+        onOpenChange={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(vi.mocked(providerOAuthStatus)).toHaveBeenCalledWith(1));
+
+    rerender(
+      <ProviderEditorDialog
+        mode="edit"
+        open={true}
+        provider={makeProvider({ id: 2, name: "Second OAuth", auth_mode: "oauth" })}
+        onSaved={vi.fn()}
+        onOpenChange={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(vi.mocked(providerOAuthStatus)).toHaveBeenCalledWith(2));
+
+    resolveSecond({
+      connected: true,
+      provider_type: "google",
+      email: "second@example.com",
+      expires_at: 1700000000,
+      has_refresh_token: true,
+    });
+    await waitFor(() => expect(screen.getByText("second@example.com")).toBeInTheDocument());
+
+    resolveFirst({
+      connected: true,
+      provider_type: "google",
+      email: "first@example.com",
+      expires_at: 1700000000,
+      has_refresh_token: true,
+    });
+    await waitFor(() => expect(screen.queryByText("first@example.com")).not.toBeInTheDocument());
+    expect(screen.getByText("second@example.com")).toBeInTheDocument();
   });
 
   it("loads OAuth status error in edit mode", async () => {

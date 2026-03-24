@@ -123,7 +123,9 @@ pub fn request_logs_clear_all(
     })
 }
 
-pub fn app_data_reset(app: &tauri::AppHandle) -> crate::shared::error::AppResult<bool> {
+pub fn app_data_reset<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> crate::shared::error::AppResult<bool> {
     tracing::error!(
         "app data reset initiated (destructive operation: deleting settings and database)"
     );

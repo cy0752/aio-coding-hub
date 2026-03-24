@@ -1,8 +1,29 @@
 import { describe, expect, it, vi } from "vitest";
-import { tauriListen, tauriUnlisten } from "../../test/mocks/tauri";
+import { clearTauriEventListeners, tauriListen, tauriUnlisten } from "../../test/mocks/tauri";
 import { setTauriRuntime } from "../../test/utils/tauriRuntime";
 
 describe("services/gatewayEvents", () => {
+  it("cleans up successful listeners when one subscription fails", async () => {
+    setTauriRuntime();
+    vi.resetModules();
+    clearTauriEventListeners();
+
+    const unlistenFns = Array.from({ length: 4 }, () => vi.fn());
+    vi.mocked(tauriListen)
+      .mockResolvedValueOnce(unlistenFns[0])
+      .mockResolvedValueOnce(unlistenFns[1])
+      .mockRejectedValueOnce(new Error("listen boom"))
+      .mockResolvedValueOnce(unlistenFns[2])
+      .mockResolvedValueOnce(unlistenFns[3]);
+
+    const { listenGatewayEvents } = await import("../gatewayEvents");
+
+    await expect(listenGatewayEvents()).rejects.toThrow("listen boom");
+
+    expect(tauriListen).toHaveBeenCalledTimes(5);
+    unlistenFns.forEach((fn) => expect(fn).toHaveBeenCalledTimes(1));
+  });
+
   it("registers listeners and handles payload branches", async () => {
     setTauriRuntime();
     vi.resetModules();

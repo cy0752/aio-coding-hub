@@ -357,13 +357,25 @@ export async function listenGatewayEvents(): Promise<() => void> {
     }
   );
 
-  await Promise.all([
+  const readyResults = await Promise.allSettled([
     requestStartSub.ready,
     attemptSub.ready,
     requestSub.ready,
     logSub.ready,
     circuitSub.ready,
   ]);
+
+  const subscribeFailed = readyResults.some((result) => result.status === "rejected");
+  if (subscribeFailed) {
+    requestStartSub.unsubscribe();
+    attemptSub.unsubscribe();
+    requestSub.unsubscribe();
+    logSub.unsubscribe();
+    circuitSub.unsubscribe();
+
+    const failedResult = readyResults.find((result) => result.status === "rejected");
+    throw failedResult?.reason ?? new Error("gateway event subscriptions failed");
+  }
 
   return () => {
     requestStartSub.unsubscribe();
