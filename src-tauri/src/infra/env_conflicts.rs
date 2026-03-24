@@ -5,8 +5,6 @@
 
 use serde::Serialize;
 use std::collections::HashSet;
-#[cfg(not(target_os = "windows"))]
-use tauri::Manager;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct EnvConflict {
@@ -59,10 +57,7 @@ fn check_shell_configs<R: tauri::Runtime>(
     use std::fs;
     use std::path::PathBuf;
 
-    let home_dir = app
-        .path()
-        .home_dir()
-        .map_err(|e| format!("failed to resolve home dir: {e}"))?;
+    let home_dir = crate::shared::user_home::home_dir(app)?;
 
     let config_files: Vec<PathBuf> = vec![
         home_dir.join(".bashrc"),

@@ -1,8 +1,6 @@
 //! Usage: Resolve per-user app data directory and related path helpers.
 
 use std::path::PathBuf;
-use tauri::Manager;
-
 pub const APP_DOTDIR_NAME: &str = ".aio-coding-hub";
 const APP_DOTDIR_NAME_ENV: &str = "AIO_CODING_HUB_DOTDIR_NAME";
 
@@ -23,10 +21,7 @@ fn is_safe_dotdir_name(name: &str) -> bool {
 pub fn app_data_dir<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
 ) -> crate::shared::error::AppResult<PathBuf> {
-    let home_dir = app
-        .path()
-        .home_dir()
-        .map_err(|e| format!("failed to resolve home dir: {e}"))?;
+    let home_dir = crate::shared::user_home::home_dir(app)?;
 
     let dotdir_name = std::env::var(APP_DOTDIR_NAME_ENV)
         .ok()

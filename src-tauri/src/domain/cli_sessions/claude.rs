@@ -12,7 +12,6 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::Manager;
 
 const FIRST_PROMPT_MAX_LEN: usize = 200;
 const MAX_TEXT_BLOCK_SIZE: usize = 20_000;
@@ -109,9 +108,8 @@ fn file_times(path: &Path) -> (Option<i64>, Option<i64>) {
 }
 
 fn home_dir(app: &tauri::AppHandle) -> AppResult<PathBuf> {
-    app.path()
-        .home_dir()
-        .map_err(|e| AppError::new("INTERNAL_ERROR", format!("failed to resolve home dir: {e}")))
+    crate::shared::user_home::home_dir(app)
+        .map_err(|e| AppError::new("INTERNAL_ERROR", e.to_string()))
 }
 
 fn claude_projects_dir(app: &tauri::AppHandle) -> AppResult<PathBuf> {

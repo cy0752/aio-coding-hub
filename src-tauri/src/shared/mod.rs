@@ -10,3 +10,4 @@ pub(crate) mod security;
 pub(crate) mod sqlite;
 pub(crate) mod text;
 pub(crate) mod time;
+pub(crate) mod user_home;

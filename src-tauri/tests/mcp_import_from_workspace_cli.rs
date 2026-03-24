@@ -3,6 +3,13 @@ mod support;
 use serde_json::json;
 
 #[test]
+fn mcp_import_from_workspace_cli_flows_are_stable() {
+    mcp_import_from_workspace_cli_reads_claude_json_and_imports();
+    mcp_import_from_workspace_cli_parses_codex_toml();
+    mcp_import_from_workspace_cli_preserves_server_key_casing();
+    mcp_import_from_workspace_cli_codex_does_not_create_suffix_key();
+}
+
 fn mcp_import_from_workspace_cli_reads_claude_json_and_imports() {
     let app = support::TestApp::new();
     let handle = app.handle();
@@ -49,7 +56,6 @@ fn mcp_import_from_workspace_cli_reads_claude_json_and_imports() {
     assert_eq!(first.get("enabled").and_then(|v| v.as_bool()), Some(true));
 }
 
-#[test]
 fn mcp_import_from_workspace_cli_parses_codex_toml() {
     let app = support::TestApp::new();
     let handle = app.handle();
@@ -89,7 +95,6 @@ FOO = "bar"
     assert_eq!(rows[0].get("command").and_then(|v| v.as_str()), Some("uvx"));
 }
 
-#[test]
 fn mcp_import_from_workspace_cli_preserves_server_key_casing() {
     let app = support::TestApp::new();
     let handle = app.handle();
@@ -141,7 +146,6 @@ fn mcp_import_from_workspace_cli_preserves_server_key_casing() {
     assert!(!servers.contains_key("amap"));
 }
 
-#[test]
 fn mcp_import_from_workspace_cli_codex_does_not_create_suffix_key() {
     let app = support::TestApp::new();
     let handle = app.handle();

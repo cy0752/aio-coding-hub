@@ -81,7 +81,7 @@ export function WslSettingsCard({ available, saving, settings }: WslSettingsCard
     let cancelled = false;
     const cleanupFns: (() => void)[] = [];
 
-    void Promise.all([
+    void Promise.allSettled([
       listen<WslConfigureReport>("wsl:auto_config_result", (event) => {
         setLastReport(event.payload);
         void wslOverviewQuery.refetch();
@@ -89,13 +89,39 @@ export function WslSettingsCard({ available, saving, settings }: WslSettingsCard
       listen("wsl:localhost_switch_prompt", () => {
         setShowListenModeDialog(true);
       }),
-    ]).then(([unlistenAutoConfigResult, unlistenLocalhostSwitchPrompt]) => {
+    ]).then(([autoConfigResult, localhostSwitchPromptResult]) => {
+      const unlistenAutoConfigResult =
+        autoConfigResult.status === "fulfilled" ? autoConfigResult.value : null;
+      const unlistenLocalhostSwitchPrompt =
+        localhostSwitchPromptResult.status === "fulfilled"
+          ? localhostSwitchPromptResult.value
+          : null;
+
       if (cancelled) {
-        unlistenAutoConfigResult();
-        unlistenLocalhostSwitchPrompt();
+        unlistenAutoConfigResult?.();
+        unlistenLocalhostSwitchPrompt?.();
         return;
       }
-      cleanupFns.push(unlistenAutoConfigResult, unlistenLocalhostSwitchPrompt);
+
+      if (
+        autoConfigResult.status === "rejected" ||
+        localhostSwitchPromptResult.status === "rejected"
+      ) {
+        unlistenAutoConfigResult?.();
+        unlistenLocalhostSwitchPrompt?.();
+        logToConsole("error", "初始化 WSL 事件监听失败", {
+          autoConfigError:
+            autoConfigResult.status === "rejected" ? String(autoConfigResult.reason) : null,
+          localhostPromptError:
+            localhostSwitchPromptResult.status === "rejected"
+              ? String(localhostSwitchPromptResult.reason)
+              : null,
+        });
+        return;
+      }
+
+      if (unlistenAutoConfigResult) cleanupFns.push(unlistenAutoConfigResult);
+      if (unlistenLocalhostSwitchPrompt) cleanupFns.push(unlistenLocalhostSwitchPrompt);
     });
 
     return () => {

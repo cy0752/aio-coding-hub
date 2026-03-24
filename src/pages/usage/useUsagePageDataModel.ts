@@ -45,6 +45,9 @@ export type UsagePageDataModel = {
   handleRetry: () => void;
 };
 
+const EMPTY_USAGE_ROWS: UsageLeaderboardRow[] = [];
+const EMPTY_CACHE_TREND_ROWS: UsageProviderCacheRateTrendRowV1[] = [];
+
 function toCliKeyOrNull(cliKey: CliFilterKey): CliKey | null {
   return cliKey === "all" ? null : cliKey;
 }
@@ -168,8 +171,9 @@ export function useUsagePageDataModel({
   } = useUsagePageQueries({ scope, period, tableTab, shouldLoad, input });
 
   const summary: UsageSummary | null = summaryQuery.data ?? null;
-  const rows: UsageLeaderboardRow[] = leaderboardQuery.data ?? [];
-  const cacheTrendRows: UsageProviderCacheRateTrendRowV1[] = cacheTrendQuery.data ?? [];
+  const rows: UsageLeaderboardRow[] = leaderboardQuery.data ?? EMPTY_USAGE_ROWS;
+  const cacheTrendRows: UsageProviderCacheRateTrendRowV1[] =
+    cacheTrendQuery.data ?? EMPTY_CACHE_TREND_ROWS;
 
   const cacheTrendProviderCount = useMemo(
     () => providerCountFromRows(cacheTrendRows),

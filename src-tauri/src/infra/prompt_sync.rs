@@ -9,7 +9,6 @@ use crate::shared::fs::{
 use crate::shared::time::now_unix_seconds;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use tauri::Manager;
 
 const MANIFEST_SCHEMA_VERSION: u32 = 1;
 const MANAGED_BY: &str = "aio-coding-hub";
@@ -39,10 +38,7 @@ fn validate_cli_key(cli_key: &str) -> Result<(), String> {
 }
 
 fn home_dir(app: &tauri::AppHandle) -> crate::shared::error::AppResult<PathBuf> {
-    Ok(app
-        .path()
-        .home_dir()
-        .map_err(|e| format!("failed to resolve home dir: {e}"))?)
+    crate::shared::user_home::home_dir(app)
 }
 
 fn prompt_target_path(

@@ -65,12 +65,15 @@ function ensureListening(event: GatewayEventName, entry: Entry): Promise<void> {
       if (entry.disposed || entry.handlers.size === 0) disposeEntry(event, entry);
     })
     .catch((error) => {
+      entry.init = null;
+      entry.unlisten = null;
       logToConsole(
         "error",
         "网关事件监听初始化失败",
         { event, error: String(error) },
         "gateway:event_bus"
       );
+      if (entry.disposed || entry.handlers.size === 0) disposeEntry(event, entry);
     });
 
   return entry.init;

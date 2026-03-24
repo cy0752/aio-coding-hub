@@ -4,7 +4,6 @@ use crate::codex_paths;
 use crate::shared::fs::{read_optional_file, write_file_atomic_if_changed};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::path::Path;
-use tauri::Manager;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CodexConfigState {
@@ -1046,9 +1045,7 @@ pub fn codex_config_get<R: tauri::Runtime>(
     let follow_dir = follow_path.parent().unwrap_or(Path::new("")).to_path_buf();
     let bytes = read_optional_file(&path)?;
 
-    let can_open_config_dir = app
-        .path()
-        .home_dir()
+    let can_open_config_dir = crate::shared::user_home::home_dir(app)
         .ok()
         .map(|home| {
             let allowed_root = home.join(".codex");

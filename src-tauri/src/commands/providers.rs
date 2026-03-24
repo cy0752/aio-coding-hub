@@ -438,10 +438,15 @@ fn build_claude_launcher_bash_script(config_path: &Path, script_path: &Path) -> 
         "#!/bin/bash\n\
 config_path={config_var}\n\
 script_path={script_var}\n\
-trap 'rm -f \"$config_path\" \"$script_path\"' EXIT\n\
+cleanup() {{\n\
+  rm -f \"$config_path\" \"$script_path\"\n\
+}}\n\
+trap cleanup EXIT INT TERM HUP\n\
 echo \"Using provider-specific claude config:\"\n\
 echo \"$config_path\"\n\
 claude --settings \"$config_path\"\n\
+cleanup\n\
+trap - EXIT INT TERM HUP\n\
 exec bash --norc --noprofile\n"
     )
 }
@@ -613,7 +618,8 @@ pub(crate) async fn provider_oauth_start_flow(
     );
 
     // 6. Open browser
-    let _ = tauri_plugin_opener::open_url(&authorize_url, None::<&str>);
+    tauri_plugin_opener::open_url(&authorize_url, None::<&str>)
+        .map_err(|e| format!("failed to open OAuth authorize URL: {e}"))?;
 
     // 7. Wait for callback (300s timeout), but abort if a newer flow cancels us.
     let callback = tokio::select! {
@@ -1002,6 +1008,10 @@ fn parse_claude_limits(body: &serde_json::Value) -> (Option<String>, Option<Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(not(target_os = "windows"))]
+    use std::process::Command;
+    #[cfg(not(target_os = "windows"))]
+    use tempfile::tempdir;
 
     #[test]
     fn bash_single_quote_escapes_single_quote() {
@@ -1062,9 +1072,61 @@ mod tests {
         let script_path = Path::new("/tmp/aio_launcher.sh");
         let script = build_claude_launcher_bash_script(config_path, script_path);
 
-        assert!(script.contains("trap 'rm -f \"$config_path\" \"$script_path\"' EXIT"));
+        assert!(script.contains("cleanup() {"));
+        assert!(script.contains("trap cleanup EXIT INT TERM HUP"));
         assert!(script.contains("claude --settings \"$config_path\""));
+        assert!(script.contains("cleanup"));
         assert!(script.contains("exec bash --norc --noprofile"));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn bash_launch_script_cleans_sensitive_files_before_shell_handoff() {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempdir().expect("tempdir");
+        let config_path = temp.path().join("claude.json");
+        let script_path = temp.path().join("launcher.sh");
+        let fake_claude_path = temp.path().join("claude");
+        let output_path = temp.path().join("claude-args.txt");
+
+        fs::write(&config_path, "{}").expect("write config");
+        fs::write(
+            &script_path,
+            build_claude_launcher_bash_script(&config_path, &script_path),
+        )
+        .expect("write script");
+        fs::write(
+            &fake_claude_path,
+            "#!/bin/bash\nprintf '%s\n' \"$@\" > \"$OUTPUT_PATH\"\nexit 0\n",
+        )
+        .expect("write fake claude");
+
+        let mut perms = fs::metadata(&fake_claude_path)
+            .expect("fake claude metadata")
+            .permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&fake_claude_path, perms).expect("chmod fake claude");
+
+        let path_env = match std::env::var("PATH") {
+            Ok(path) => format!("{}:{}", temp.path().display(), path),
+            Err(_) => temp.path().display().to_string(),
+        };
+        let status = Command::new("bash")
+            .arg(&script_path)
+            .env("PATH", path_env)
+            .env("OUTPUT_PATH", &output_path)
+            .status()
+            .expect("run launcher");
+
+        assert!(status.success());
+        assert!(!config_path.exists(), "config file should be removed");
+        assert!(!script_path.exists(), "launcher script should be removed");
+
+        let claude_args = fs::read_to_string(&output_path).expect("read fake claude args");
+        assert!(claude_args.contains("--settings"));
+        assert!(claude_args.contains(config_path.to_string_lossy().as_ref()));
     }
 
     #[test]

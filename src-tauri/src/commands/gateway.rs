@@ -41,26 +41,33 @@ pub(crate) fn gateway_status(state: tauri::State<'_, GatewayState>) -> gateway::
 }
 
 #[tauri::command]
-pub(crate) fn gateway_check_port_available(app: tauri::AppHandle, port: u16) -> bool {
+pub(crate) async fn gateway_check_port_available(app: tauri::AppHandle, port: u16) -> bool {
     if port < 1024 {
         return false;
     }
 
-    let cfg = settings::read(&app).unwrap_or_default();
-    let host = match cfg.gateway_listen_mode {
-        settings::GatewayListenMode::Localhost => "127.0.0.1".to_string(),
-        settings::GatewayListenMode::Lan => "0.0.0.0".to_string(),
-        settings::GatewayListenMode::WslAuto => {
-            wsl::host_ipv4_best_effort().unwrap_or_else(|| "127.0.0.1".to_string())
-        }
-        settings::GatewayListenMode::Custom => {
-            gateway::listen::parse_custom_listen_address(&cfg.gateway_custom_listen_address)
-                .map(|v| v.host)
-                .unwrap_or_else(|_| "127.0.0.1".to_string())
-        }
-    };
+    blocking::run(
+        "gateway_check_port_available",
+        move || -> crate::shared::error::AppResult<bool> {
+            let cfg = settings::read(&app).unwrap_or_default();
+            let host = match cfg.gateway_listen_mode {
+                settings::GatewayListenMode::Localhost => "127.0.0.1".to_string(),
+                settings::GatewayListenMode::Lan => "0.0.0.0".to_string(),
+                settings::GatewayListenMode::WslAuto => {
+                    wsl::host_ipv4_best_effort().unwrap_or_else(|| "127.0.0.1".to_string())
+                }
+                settings::GatewayListenMode::Custom => {
+                    gateway::listen::parse_custom_listen_address(&cfg.gateway_custom_listen_address)
+                        .map(|v| v.host)
+                        .unwrap_or_else(|_| "127.0.0.1".to_string())
+                }
+            };
 
-    std::net::TcpListener::bind((host.as_str(), port)).is_ok()
+            Ok(std::net::TcpListener::bind((host.as_str(), port)).is_ok())
+        },
+    )
+    .await
+    .unwrap_or(false)
 }
 
 #[tauri::command]

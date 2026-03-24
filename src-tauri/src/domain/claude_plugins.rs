@@ -4,7 +4,6 @@ use crate::app_paths;
 use crate::shared::fs::write_file_atomic_if_changed;
 use crate::shared::time::now_unix_seconds;
 use std::path::{Path, PathBuf};
-use tauri::Manager;
 
 fn validate_cli_key(cli_key: &str) -> crate::shared::error::AppResult<()> {
     crate::shared::cli_key::validate_cli_key(cli_key)?;
@@ -21,9 +20,7 @@ fn validate_cli_key(cli_key: &str) -> crate::shared::error::AppResult<()> {
 fn home_dir<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
 ) -> crate::shared::error::AppResult<PathBuf> {
-    app.path()
-        .home_dir()
-        .map_err(|e| format!("failed to resolve home dir: {e}").into())
+    crate::shared::user_home::home_dir(app)
 }
 
 fn claude_plugins_root<R: tauri::Runtime>(

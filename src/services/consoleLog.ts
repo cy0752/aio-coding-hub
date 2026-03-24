@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { GatewayErrorDescriptions } from "../constants/gatewayErrorCodes";
+import { GatewayErrorDescriptions, type GatewayErrorCode } from "../constants/gatewayErrorCodes";
 
 export const CONSOLE_LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
 
@@ -312,7 +312,8 @@ function statusLabel(status: unknown): string {
 
 function errorDesc(code: unknown): { desc: string; suggestion: string } | null {
   if (typeof code !== "string" || !code) return null;
-  return GatewayErrorDescriptions[code] ?? null;
+  if (!(code in GatewayErrorDescriptions)) return null;
+  return GatewayErrorDescriptions[code as GatewayErrorCode] ?? null;
 }
 
 function formatGatewayRequest(d: Record<string, unknown>): string {

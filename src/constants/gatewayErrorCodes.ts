@@ -41,7 +41,7 @@ export type GatewayErrorCode = (typeof GatewayErrorCodes)[keyof typeof GatewayEr
 
 export type GatewayErrorDescription = { desc: string; suggestion: string };
 
-export const GatewayErrorDescriptions: Record<string, GatewayErrorDescription> = {
+export const GatewayErrorDescriptions = {
   GW_ALL_PROVIDERS_UNAVAILABLE: {
     desc: "所有 Provider 均不可用",
     suggestion:
@@ -172,4 +172,4 @@ export const GatewayErrorDescriptions: Record<string, GatewayErrorDescription> =
     desc: "请求日志被丢弃",
     suggestion: "部分请求日志因队列压力被丢弃。不影响请求处理。",
   },
-};
+} satisfies Record<GatewayErrorCode, GatewayErrorDescription>;

@@ -7,9 +7,9 @@
  * 参考：https://github.com/ZekerTop/ai-cli-complete-notify
  */
 
-import { listen } from "@tauri-apps/api/event";
 import { useSyncExternalStore } from "react";
 import { logToConsole } from "./consoleLog";
+import { gatewayEventNames, subscribeGatewayEvent } from "./gatewayEventBus";
 import { noticeSend } from "./notice";
 import type { GatewayRequestEvent, GatewayRequestStartEvent } from "./gatewayEvents";
 
@@ -248,22 +248,25 @@ async function maybeNotify(cliKey: string) {
 // ---------------------------------------------------------------------------
 
 export async function listenTaskCompleteNotifyEvents(): Promise<() => void> {
-  const unlistenRequestStart = await listen<GatewayRequestStartEvent>(
-    "gateway:request_start",
-    (event) => {
-      if (!event.payload) return;
-      handleRequestStart(event.payload);
+  const requestStartSub = subscribeGatewayEvent<GatewayRequestStartEvent>(
+    gatewayEventNames.requestStart,
+    (payload) => {
+      if (!payload) return;
+      handleRequestStart(payload);
     }
   );
-
-  const unlistenRequest = await listen<GatewayRequestEvent>("gateway:request", (event) => {
-    if (!event.payload) return;
-    handleRequestComplete(event.payload);
-  });
+  const requestSub = subscribeGatewayEvent<GatewayRequestEvent>(
+    gatewayEventNames.request,
+    (payload) => {
+      if (!payload) return;
+      handleRequestComplete(payload);
+    }
+  );
+  await Promise.all([requestStartSub.ready, requestSub.ready]);
 
   return () => {
-    unlistenRequestStart();
-    unlistenRequest();
+    requestStartSub.unsubscribe();
+    requestSub.unsubscribe();
     resetSessions();
   };
 }

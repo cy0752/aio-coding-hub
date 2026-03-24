@@ -38,3 +38,4 @@ coverage/
 .trellis/
 .agents/
 src/templates/
+.codex/

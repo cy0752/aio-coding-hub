@@ -59,6 +59,7 @@ impl CliProxyTestApp {
         let mut env = EnvRestore::default();
         let home_os = home.path().as_os_str().to_os_string();
         env.set_var("HOME", home_os.clone());
+        env.set_var("AIO_CODING_HUB_HOME_DIR", home_os.clone());
         env.set_var("USERPROFILE", home_os);
         // 显式隔离 Codex 配置目录，避免 CI 上 home_dir 解析差异导致测试串扰。
         env.set_var("CODEX_HOME", home.path().join(".codex").into_os_string());

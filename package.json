@@ -15,6 +15,7 @@
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "check:no-instant-now-sub": "node scripts/check-no-instant-now-sub.mjs",
+    "check:spec-links": "node scripts/check-spec-links.mjs",
     "check:precommit": "pnpm check:precommit:src && pnpm check:precommit:tauri",
     "check:prepush": "pnpm test:unit:coverage && pnpm check:generated-bindings && pnpm tauri:test && pnpm tauri:clippy",
     "hooks:install": "node scripts/install-git-hooks.mjs",
@@ -36,7 +37,7 @@
     "tauri:gen-types": "cd src-tauri && cargo test export_bindings -- --ignored",
     "check:precommit:src": "pnpm lint && pnpm typecheck && pnpm check:no-instant-now-sub",
     "check:precommit:tauri": "pnpm tauri:check",
-    "check:precommit:full": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm check:no-instant-now-sub && pnpm tauri:fmt && pnpm tauri:check && pnpm check:generated-bindings && pnpm tauri:clippy",
+    "check:precommit:full": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm check:no-instant-now-sub && pnpm check:spec-links && pnpm tauri:fmt && pnpm tauri:check && pnpm check:generated-bindings && pnpm tauri:clippy",
     "check:generated-bindings": "node scripts/check-generated-bindings.mjs"
   },
   "dependencies": {

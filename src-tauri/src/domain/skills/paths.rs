@@ -2,7 +2,6 @@ use crate::app_paths;
 use crate::codex_paths;
 use crate::domain::skills::types::SkillsPaths;
 use std::path::PathBuf;
-use tauri::Manager;
 
 pub(super) fn validate_cli_key(cli_key: &str) -> crate::shared::error::AppResult<()> {
     crate::shared::cli_key::validate_cli_key(cli_key)
@@ -11,9 +10,7 @@ pub(super) fn validate_cli_key(cli_key: &str) -> crate::shared::error::AppResult
 fn home_dir<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
 ) -> crate::shared::error::AppResult<PathBuf> {
-    app.path()
-        .home_dir()
-        .map_err(|e| format!("failed to resolve home dir: {e}").into())
+    crate::shared::user_home::home_dir(app)
 }
 
 pub(super) fn ssot_skills_root<R: tauri::Runtime>(

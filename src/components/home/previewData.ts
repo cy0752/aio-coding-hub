@@ -1,6 +1,8 @@
 // Usage: Preview / demo data for the Home page empty-state previews (DEV mode only).
 // Extracted from HomeRequestLogsPanel to keep the component file lean.
 
+import { GatewayErrorCodes } from "../../constants/gatewayErrorCodes";
+import type { GatewayAttemptEvent } from "../../services/gatewayEvents";
 import type { RequestLogSummary } from "../../services/requestLogs";
 import type { TraceSession } from "../../services/traceStore";
 
@@ -94,7 +96,7 @@ export function buildPreviewRequestLogs(
           ok: false,
           attempts: 1,
           status: 500,
-          error_code: "GW_UPSTREAM_5XX",
+          error_code: GatewayErrorCodes.UPSTREAM_5XX,
         },
         { provider_id: 16, provider_name: "Codex Pool B", ok: true, attempts: 1, status: 200 },
       ],
@@ -212,7 +214,7 @@ export function buildPreviewRequestLogs(
       path: "/v1/responses",
       requested_model: "gpt-5.4-mini",
       status: 504,
-      error_code: "GW_UPSTREAM_TIMEOUT",
+      error_code: GatewayErrorCodes.UPSTREAM_TIMEOUT,
       duration_ms: 12040,
       ttfb_ms: 0,
       attempt_count: 1,
@@ -243,7 +245,7 @@ export function buildPreviewRequestLogs(
       path: "/v1/chat/completions",
       requested_model: "gemini-2.5-pro",
       status: 429,
-      error_code: "GW_UPSTREAM_429",
+      error_code: GatewayErrorCodes.PROVIDER_RATE_LIMITED,
       duration_ms: 2480,
       ttfb_ms: 1100,
       attempt_count: 2,
@@ -259,7 +261,7 @@ export function buildPreviewRequestLogs(
           ok: false,
           attempts: 1,
           status: 429,
-          error_code: "GW_UPSTREAM_429",
+          error_code: GatewayErrorCodes.PROVIDER_RATE_LIMITED,
         },
         { provider_id: 14, provider_name: "Gemini Mirror", ok: false, attempts: 1, status: 429 },
       ],
@@ -401,7 +403,7 @@ export function buildPreviewTraces(nowMs = Date.now()): TraceSession[] {
           attempt_started_ms: nowMs - 18_000,
           attempt_duration_ms: 18_000,
           session_reuse: true,
-        } as any,
+        } satisfies GatewayAttemptEvent,
       ],
     },
   ];

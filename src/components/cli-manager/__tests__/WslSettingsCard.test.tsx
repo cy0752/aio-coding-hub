@@ -164,6 +164,49 @@ describe("components/cli-manager/WslSettingsCard", () => {
     expect(toast).toHaveBeenCalledWith("未检测到 WSL");
   });
 
+  it("handles listener setup failures without leaking unhandled rejections", async () => {
+    vi.mocked(useSettingsSetMutation).mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn(),
+    } as any);
+    vi.mocked(useAppAboutQuery).mockReturnValue({ data: { os: "windows" } } as any);
+    vi.mocked(useWslOverviewQuery).mockReturnValue({
+      data: { detection: { detected: true, distros: ["Ubuntu"] }, hostIp: null, statusRows: [] },
+      isFetched: true,
+      isFetching: false,
+      refetch: vi.fn(),
+    } as any);
+    vi.mocked(useWslConfigureClientsMutation).mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn(),
+    } as any);
+
+    vi.mocked(tauriListen).mockRejectedValueOnce(new Error("listen boom"));
+
+    render(
+      <WslSettingsCard
+        available={true}
+        saving={false}
+        settings={
+          {
+            wsl_auto_config: true,
+            wsl_target_cli: { claude: true, codex: false, gemini: false },
+            gateway_listen_mode: "wsl_auto",
+            wsl_host_address_mode: "auto",
+            wsl_custom_host_address: "127.0.0.1",
+            preferred_port: 37123,
+            auto_start: false,
+            log_retention_days: 7,
+            failover_max_attempts_per_provider: 5,
+            failover_max_providers_to_try: 5,
+          } as any
+        }
+      />
+    );
+
+    await waitFor(() => expect(tauriListen).toHaveBeenCalled());
+  });
+
   it("handles configure report null + failure fallback + errors", async () => {
     vi.mocked(useSettingsSetMutation).mockReturnValue({
       isPending: false,

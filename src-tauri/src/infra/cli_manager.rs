@@ -5,7 +5,6 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
-use tauri::Manager;
 
 const ENV_KEY_MCP_TIMEOUT: &str = "MCP_TIMEOUT";
 const ENV_KEY_DISABLE_ERROR_REPORTING: &str = "DISABLE_ERROR_REPORTING";
@@ -98,9 +97,7 @@ fn command_output_with_timeout(
 fn home_dir<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
 ) -> crate::shared::error::AppResult<PathBuf> {
-    app.path()
-        .home_dir()
-        .map_err(|e| format!("failed to resolve home dir: {e}").into())
+    crate::shared::user_home::home_dir(app)
 }
 
 fn claude_config_dir<R: tauri::Runtime>(

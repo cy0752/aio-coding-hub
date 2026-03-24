@@ -3,7 +3,6 @@
 use crate::shared::fs::{read_optional_file, write_file_atomic_if_changed};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use tauri::Manager;
 
 const ENV_KEY_MCP_TIMEOUT: &str = "MCP_TIMEOUT";
 const ENV_KEY_MCP_TOOL_TIMEOUT: &str = "MCP_TOOL_TIMEOUT";
@@ -101,9 +100,7 @@ pub struct ClaudeSettingsPatch {
 fn home_dir<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
 ) -> crate::shared::error::AppResult<PathBuf> {
-    app.path()
-        .home_dir()
-        .map_err(|e| format!("failed to resolve home dir: {e}").into())
+    crate::shared::user_home::home_dir(app)
 }
 
 fn claude_config_dir<R: tauri::Runtime>(

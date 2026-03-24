@@ -336,7 +336,7 @@ export function ProviderEditorDialog(props: ProviderEditorDialogProps) {
       });
 
     apiKeyFetchPromiseRef.current = request;
-  }, [authMode, editingProviderId, mode, open]);
+  }, [authMode, editingProviderId, mode, open, setValue]);
 
   useEffect(() => {
     if (!open) return;

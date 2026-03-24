@@ -64,6 +64,7 @@ impl TestApp {
         let home_os = home.path().as_os_str().to_os_string();
 
         env.set_var("HOME", home_os.clone());
+        env.set_var("AIO_CODING_HUB_HOME_DIR", home_os.clone());
         // Windows fallback env for `dirs`/tauri path resolution.
         env.set_var("USERPROFILE", home_os);
 

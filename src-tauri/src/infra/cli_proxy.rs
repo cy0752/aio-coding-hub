@@ -7,7 +7,6 @@ use crate::shared::time::now_unix_seconds;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use tauri::Manager;
 
 const MANIFEST_SCHEMA_VERSION: u32 = 1;
 const MANAGED_BY: &str = "aio-coding-hub";
@@ -75,9 +74,7 @@ fn validate_cli_key(cli_key: &str) -> crate::shared::error::AppResult<()> {
 fn home_dir<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
 ) -> crate::shared::error::AppResult<PathBuf> {
-    app.path()
-        .home_dir()
-        .map_err(|e| format!("failed to resolve home dir: {e}").into())
+    crate::shared::user_home::home_dir(app)
 }
 
 fn claude_settings_path<R: tauri::Runtime>(
