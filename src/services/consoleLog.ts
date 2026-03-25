@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { GatewayErrorDescriptions, type GatewayErrorCode } from "../constants/gatewayErrorCodes";
+import { gatewayEventNames } from "../constants/gatewayEvents";
 
 export const CONSOLE_LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
 
@@ -514,15 +515,15 @@ export function formatConsoleLogDetailsSmart(entry: ConsoleLogEntry): string | u
   if (!record) return formatConsoleLogDetails(entry.details);
 
   switch (entry.eventType) {
-    case "gateway:request":
+    case gatewayEventNames.request:
       return formatGatewayRequest(record);
-    case "gateway:attempt":
+    case gatewayEventNames.attempt:
       return formatGatewayAttempt(record);
-    case "gateway:circuit":
+    case gatewayEventNames.circuit:
       return formatGatewayCircuit(record);
-    case "gateway:log":
+    case gatewayEventNames.log:
       return formatGatewayLog(record);
-    case "gateway:request_start":
+    case gatewayEventNames.requestStart:
       return formatGatewayRequestStart(record);
     default:
       return formatConsoleLogDetails(entry.details);

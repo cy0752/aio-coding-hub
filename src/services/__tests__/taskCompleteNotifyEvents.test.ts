@@ -1,5 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { gatewayEventNames } from "../../constants/gatewayEvents";
 import { clearTauriEventListeners, emitTauriEvent } from "../../test/mocks/tauri";
 import { clearTauriRuntime, setTauriRuntime } from "../../test/utils/tauriRuntime";
 
@@ -66,8 +67,8 @@ describe("services/taskCompleteNotifyEvents", () => {
 
     const cleanup = await mod.listenTaskCompleteNotifyEvents();
 
-    emitTauriEvent("gateway:request_start", null);
-    emitTauriEvent("gateway:request", null);
+    emitTauriEvent(gatewayEventNames.requestStart, null);
+    emitTauriEvent(gatewayEventNames.request, null);
 
     await vi.advanceTimersByTimeAsync(200_000);
     expect(noticeSend).not.toHaveBeenCalled();
@@ -87,10 +88,10 @@ describe("services/taskCompleteNotifyEvents", () => {
     const cleanup = await mod.listenTaskCompleteNotifyEvents();
 
     emitTauriEvent(
-      "gateway:request_start",
+      gatewayEventNames.requestStart,
       requestStartWithTrace("claude", "t-1", "claude-3-5-sonnet")
     );
-    emitTauriEvent("gateway:request", requestEvent("claude", "t-1"));
+    emitTauriEvent(gatewayEventNames.request, requestEvent("claude", "t-1"));
 
     await vi.advanceTimersByTimeAsync(30_000);
 
@@ -116,11 +117,11 @@ describe("services/taskCompleteNotifyEvents", () => {
     const cleanup = await mod.listenTaskCompleteNotifyEvents();
 
     // Intentionally omit request_start to cover session creation in request handler.
-    emitTauriEvent("gateway:request", requestEvent("gemini", "t-1"));
+    emitTauriEvent(gatewayEventNames.request, requestEvent("gemini", "t-1"));
 
     // Update the timestamp so duration formatting hits the >= 60s branch.
     vi.setSystemTime(1_700_000_065_000);
-    emitTauriEvent("gateway:request", requestEvent("gemini", "t-2"));
+    emitTauriEvent(gatewayEventNames.request, requestEvent("gemini", "t-2"));
 
     await vi.advanceTimersByTimeAsync(30_000);
 
@@ -147,10 +148,10 @@ describe("services/taskCompleteNotifyEvents", () => {
     mod.setTaskCompleteNotifyEnabled(false);
 
     emitTauriEvent(
-      "gateway:request_start",
+      gatewayEventNames.requestStart,
       requestStartWithTrace("claude", "t-1", "claude-3-5-sonnet")
     );
-    emitTauriEvent("gateway:request", requestEvent("claude", "t-1"));
+    emitTauriEvent(gatewayEventNames.request, requestEvent("claude", "t-1"));
 
     await vi.advanceTimersByTimeAsync(30_000);
 
@@ -172,20 +173,20 @@ describe("services/taskCompleteNotifyEvents", () => {
 
     // Two overlapping requests: should NOT notify after first completion.
     emitTauriEvent(
-      "gateway:request_start",
+      gatewayEventNames.requestStart,
       requestStartWithTrace("claude", "t-1", "claude-3-5-sonnet")
     );
     emitTauriEvent(
-      "gateway:request_start",
+      gatewayEventNames.requestStart,
       requestStartWithTrace("claude", "t-2", "claude-3-5-sonnet")
     );
-    emitTauriEvent("gateway:request", requestEvent("claude", "t-1"));
+    emitTauriEvent(gatewayEventNames.request, requestEvent("claude", "t-1"));
 
     await vi.advanceTimersByTimeAsync(30_000);
     expect(noticeSend).not.toHaveBeenCalled();
 
     // Finish the second request; after quiet period, it should notify once.
-    emitTauriEvent("gateway:request", requestEvent("claude", "t-2"));
+    emitTauriEvent(gatewayEventNames.request, requestEvent("claude", "t-2"));
     await vi.advanceTimersByTimeAsync(30_000);
 
     expect(noticeSend).toHaveBeenCalledTimes(1);
@@ -205,17 +206,17 @@ describe("services/taskCompleteNotifyEvents", () => {
     const cleanup = await mod.listenTaskCompleteNotifyEvents();
 
     emitTauriEvent(
-      "gateway:request_start",
+      gatewayEventNames.requestStart,
       requestStartWithTrace("claude", "t-1", "claude-3-5-sonnet")
     );
-    emitTauriEvent("gateway:request", requestEvent("claude", "t-1"));
+    emitTauriEvent(gatewayEventNames.request, requestEvent("claude", "t-1"));
 
     // Quiet timer is scheduled for 30s after completion.
     await vi.advanceTimersByTimeAsync(10_000);
 
     // A new request starts before the timer fires: should cancel the pending timer.
     emitTauriEvent(
-      "gateway:request_start",
+      gatewayEventNames.requestStart,
       requestStartWithTrace("claude", "t-2", "claude-3-5-sonnet")
     );
 

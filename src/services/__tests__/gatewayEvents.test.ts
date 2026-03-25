@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { gatewayEventNames } from "../../constants/gatewayEvents";
 import { clearTauriEventListeners, tauriListen, tauriUnlisten } from "../../test/mocks/tauri";
 import { setTauriRuntime } from "../../test/utils/tauriRuntime";
 
@@ -43,7 +44,7 @@ describe("services/gatewayEvents", () => {
     const handlerFor = (eventName: string) =>
       vi.mocked(tauriListen).mock.calls.find((call) => call[0] === eventName)?.[1];
 
-    const requestStart = handlerFor("gateway:request_start");
+    const requestStart = handlerFor(gatewayEventNames.requestStart);
     requestStart?.({ payload: null } as any);
     requestStart?.({
       payload: {
@@ -57,7 +58,7 @@ describe("services/gatewayEvents", () => {
       },
     } as any);
 
-    const attempt = handlerFor("gateway:attempt");
+    const attempt = handlerFor(gatewayEventNames.attempt);
     attempt?.({ payload: null } as any);
     attempt?.({
       payload: {
@@ -98,7 +99,7 @@ describe("services/gatewayEvents", () => {
       },
     } as any);
 
-    const request = handlerFor("gateway:request");
+    const request = handlerFor(gatewayEventNames.request);
     request?.({ payload: null } as any);
     request?.({
       payload: {
@@ -135,7 +136,7 @@ describe("services/gatewayEvents", () => {
       },
     } as any);
 
-    const log = handlerFor("gateway:log");
+    const log = handlerFor(gatewayEventNames.log);
     log?.({ payload: null } as any);
     log?.({
       payload: {
@@ -148,7 +149,7 @@ describe("services/gatewayEvents", () => {
       },
     } as any);
 
-    const circuit = handlerFor("gateway:circuit");
+    const circuit = handlerFor(gatewayEventNames.circuit);
     circuit?.({ payload: null } as any);
     circuit?.({
       payload: {

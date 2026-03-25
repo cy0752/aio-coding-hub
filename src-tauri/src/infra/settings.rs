@@ -125,11 +125,18 @@ impl Default for WslHostAddressMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
-#[serde(rename_all = "snake_case")]
 pub enum HomeUsagePeriod {
+    #[serde(rename = "last7")]
+    #[specta(rename = "last7")]
     Last7,
+    #[serde(rename = "last15")]
+    #[specta(rename = "last15")]
     Last15,
+    #[serde(rename = "last30")]
+    #[specta(rename = "last30")]
     Last30,
+    #[serde(rename = "month")]
+    #[specta(rename = "month")]
     Month,
 }
 

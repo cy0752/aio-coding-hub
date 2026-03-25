@@ -16,7 +16,7 @@ use crate::shared::error::AppError;
 
 const MAIN_WINDOW_LABEL: &str = "main";
 
-const HEARTBEAT_EVENT: &str = "app:heartbeat";
+pub(crate) const HEARTBEAT_EVENT_NAME: &str = "app:heartbeat";
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
 const PONG_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -157,7 +157,7 @@ pub(crate) fn install(app: &tauri::AppHandle) {
             let now = now_unix_millis();
             let payload = HeartbeatPayload { ts_unix_ms: now };
 
-            if let Err(err) = app.emit(HEARTBEAT_EVENT, payload) {
+            if let Err(err) = app.emit(HEARTBEAT_EVENT_NAME, payload) {
                 tracing::debug!("emit heartbeat failed: {}", err);
             }
 

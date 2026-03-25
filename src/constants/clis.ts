@@ -26,6 +26,22 @@ export const CLI_FILTER_ITEMS: CliFilterItem[] = [
   ...CLIS.map((cli) => ({ key: cli.key, label: cli.name })),
 ];
 
+const CLI_SHORT_LABELS: Record<CliKey, string> = {
+  claude: "Claude",
+  codex: "Codex",
+  gemini: "Gemini",
+};
+
+export const CLI_SHORT_ITEMS: Array<{ key: CliKey; label: string }> = CLIS.map((cli) => ({
+  key: cli.key,
+  label: CLI_SHORT_LABELS[cli.key],
+}));
+
+export const CLI_FILTER_SHORT_ITEMS: CliFilterItem[] = [
+  { key: "all", label: "全部" },
+  ...CLI_SHORT_ITEMS,
+];
+
 export function isCliKey(value: unknown): value is CliKey {
   if (typeof value !== "string") return false;
   return CLIS.some((cli) => cli.key === value);
@@ -50,9 +66,9 @@ export function enabledFlagForCli<T extends CliEnabledFlags>(row: T, cliKey: Cli
 }
 
 export function cliShortLabel(cliKey: string) {
-  if (cliKey === "claude") return "Claude";
-  if (cliKey === "codex") return "Codex";
-  if (cliKey === "gemini") return "Gemini";
+  if (cliKey === "claude" || cliKey === "codex" || cliKey === "gemini") {
+    return CLI_SHORT_LABELS[cliKey];
+  }
   return cliKey;
 }
 

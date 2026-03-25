@@ -1,4 +1,4 @@
-import type { HomeUsagePeriod } from "../services/settings";
+import type { HomeUsagePeriod } from "../constants/homeUsagePeriods";
 
 export const DEFAULT_HOME_USAGE_PERIOD: HomeUsagePeriod = "last15";
 

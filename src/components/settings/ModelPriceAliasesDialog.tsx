@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { CLI_SHORT_ITEMS } from "../../constants/clis";
 import { Button } from "../../ui/Button";
 import { Dialog } from "../../ui/Dialog";
 import { Input } from "../../ui/Input";
@@ -21,12 +22,6 @@ import {
   useModelPriceAliasesSetMutation,
   useModelPricesListQuery,
 } from "../../query/modelPrices";
-
-const CLI_ITEMS: Array<{ key: CliKey; label: string }> = [
-  { key: "claude", label: "Claude" },
-  { key: "codex", label: "Codex" },
-  { key: "gemini", label: "Gemini" },
-];
 
 const MATCH_TYPE_ITEMS: Array<{ key: ModelPriceAliasMatchType; label: string }> = [
   { key: "exact", label: "精确 (exact)" },
@@ -310,7 +305,7 @@ export function ModelPriceAliasesDialog({
                         }
                         disabled={saving}
                       >
-                        {CLI_ITEMS.map((it) => (
+                        {CLI_SHORT_ITEMS.map((it) => (
                           <option key={it.key} value={it.key}>
                             {it.label}
                           </option>

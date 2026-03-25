@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { gatewayEventNames } from "../../constants/gatewayEvents";
 import type { ConsoleLogEntry } from "../consoleLog";
 
 async function importFresh() {
@@ -102,7 +103,7 @@ describe("services/consoleLog (formatting)", () => {
           error_code: "GW_UPSTREAM_5XX",
           error_category: "upstream",
         },
-        eventType: "gateway:request",
+        eventType: gatewayEventNames.request,
       };
       const result = formatConsoleLogDetailsSmart(entry)!;
       expect(result).toContain("请求摘要");
@@ -141,7 +142,7 @@ describe("services/consoleLog (formatting)", () => {
           circuit_failure_count: 1,
           circuit_failure_threshold: 5,
         },
-        eventType: "gateway:attempt",
+        eventType: gatewayEventNames.attempt,
       };
       const result = formatConsoleLogDetailsSmart(entry)!;
       expect(result).toContain("故障切换尝试");
@@ -170,7 +171,7 @@ describe("services/consoleLog (formatting)", () => {
           circuit_failure_count: 4,
           circuit_failure_threshold: 5,
         },
-        eventType: "gateway:attempt",
+        eventType: gatewayEventNames.attempt,
       };
       const result = formatConsoleLogDetailsSmart(entry)!;
       expect(result).toContain("距离熔断阈值还差 1 次失败");
@@ -195,7 +196,7 @@ describe("services/consoleLog (formatting)", () => {
           open_until: nowSec + 300,
           trace_id: "t-1",
         },
-        eventType: "gateway:circuit",
+        eventType: gatewayEventNames.circuit,
       };
       const result = formatConsoleLogDetailsSmart(entry)!;
       expect(result).toContain("熔断器触发");
@@ -221,7 +222,7 @@ describe("services/consoleLog (formatting)", () => {
           failure_count: 0,
           failure_threshold: 5,
         },
-        eventType: "gateway:circuit",
+        eventType: gatewayEventNames.circuit,
       };
       const result = formatConsoleLogDetailsSmart(entry)!;
       expect(result).toContain("熔断器恢复");
@@ -244,7 +245,7 @@ describe("services/consoleLog (formatting)", () => {
           failure_count: 2,
           failure_threshold: 5,
         },
-        eventType: "gateway:circuit",
+        eventType: gatewayEventNames.circuit,
       };
       const result = formatConsoleLogDetailsSmart(entry)!;
       expect(result).toContain("熔断器事件");
@@ -268,7 +269,7 @@ describe("services/consoleLog (formatting)", () => {
           failure_threshold: 5,
           open_until: nowSec - 10,
         },
-        eventType: "gateway:circuit",
+        eventType: gatewayEventNames.circuit,
       };
       const result = formatConsoleLogDetailsSmart(entry)!;
       expect(result).toContain("已到期");
@@ -288,7 +289,7 @@ describe("services/consoleLog (formatting)", () => {
           requested_port: 8080,
           bound_port: 8081,
         },
-        eventType: "gateway:log",
+        eventType: gatewayEventNames.log,
       };
       const result = formatConsoleLogDetailsSmart(entry)!;
       expect(result).toContain("网关事件");
@@ -312,7 +313,7 @@ describe("services/consoleLog (formatting)", () => {
           method: "POST",
           path: "/v1/messages",
         },
-        eventType: "gateway:request_start",
+        eventType: gatewayEventNames.requestStart,
       };
       const result = formatConsoleLogDetailsSmart(entry)!;
       expect(result).toContain("请求开始");
@@ -348,14 +349,14 @@ describe("services/consoleLog (formatting)", () => {
       expect(result.current).toEqual([]);
 
       act(() => {
-        mod.logToConsole("info", "test", { trace_id: "t-1" }, "gateway:request");
+        mod.logToConsole("info", "test", { trace_id: "t-1" }, gatewayEventNames.request);
       });
 
       await waitFor(() => {
         expect(result.current.length).toBe(1);
       });
 
-      expect(result.current[0].eventType).toBe("gateway:request");
+      expect(result.current[0].eventType).toBe(gatewayEventNames.request);
     });
   });
 
@@ -473,7 +474,7 @@ describe("services/consoleLog (formatting)", () => {
         level: "info",
         title: "test",
         details: { status: 429 },
-        eventType: "gateway:request",
+        eventType: gatewayEventNames.request,
       };
       const result = formatConsoleLogDetailsSmart(entry)!;
       expect(result).toContain("429 (客户端错误)");
@@ -488,7 +489,7 @@ describe("services/consoleLog (formatting)", () => {
         level: "info",
         title: "test",
         details: { status: 502 },
-        eventType: "gateway:request",
+        eventType: gatewayEventNames.request,
       };
       const result = formatConsoleLogDetailsSmart(entry)!;
       expect(result).toContain("502 (服务端错误)");
@@ -503,7 +504,7 @@ describe("services/consoleLog (formatting)", () => {
         level: "info",
         title: "test",
         details: { status: "not-a-number" },
-        eventType: "gateway:request",
+        eventType: gatewayEventNames.request,
       };
       const result = formatConsoleLogDetailsSmart(entry)!;
       expect(result).toContain("not-a-number");
@@ -518,7 +519,7 @@ describe("services/consoleLog (formatting)", () => {
         level: "info",
         title: "test",
         details: { status: null },
-        eventType: "gateway:request",
+        eventType: gatewayEventNames.request,
       };
       const result = formatConsoleLogDetailsSmart(entry)!;
       expect(result).toContain("—");

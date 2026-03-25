@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { gatewayEventNames } from "../../constants/gatewayEvents";
 import { clearTauriEventListeners, tauriListen, tauriUnlisten } from "../../test/mocks/tauri";
 
 describe("services/gatewayEventBus", () => {
@@ -16,15 +17,15 @@ describe("services/gatewayEventBus", () => {
     const { subscribeGatewayEvent } = await import("../gatewayEventBus");
     const handler = vi.fn();
 
-    const first = subscribeGatewayEvent("gateway:request", handler);
+    const first = subscribeGatewayEvent(gatewayEventNames.request, handler);
     await expect(first.ready).rejects.toThrow("listen boom");
     first.unsubscribe();
 
-    const second = subscribeGatewayEvent("gateway:request", handler);
+    const second = subscribeGatewayEvent(gatewayEventNames.request, handler);
     await second.ready;
     const callback =
       vi.mocked(tauriListen).mock.calls[vi.mocked(tauriListen).mock.calls.length - 1]?.[1];
-    callback?.({ event: "gateway:request", payload: { trace_id: "t-1" } });
+    callback?.({ event: gatewayEventNames.request, payload: { trace_id: "t-1" } });
 
     expect(tauriListen).toHaveBeenCalledTimes(2);
     expect(handler).toHaveBeenCalledWith({ trace_id: "t-1" });
@@ -43,17 +44,17 @@ describe("services/gatewayEventBus", () => {
     const { subscribeGatewayEvent } = await import("../gatewayEventBus");
     const handler = vi.fn();
 
-    const pending = subscribeGatewayEvent("gateway:request", handler);
+    const pending = subscribeGatewayEvent(gatewayEventNames.request, handler);
     pending.unsubscribe();
 
     resolveListen(tauriUnlisten);
     await pending.ready;
 
-    const next = subscribeGatewayEvent("gateway:request", handler);
+    const next = subscribeGatewayEvent(gatewayEventNames.request, handler);
     await next.ready;
     const callback =
       vi.mocked(tauriListen).mock.calls[vi.mocked(tauriListen).mock.calls.length - 1]?.[1];
-    callback?.({ event: "gateway:request", payload: { trace_id: "t-2" } });
+    callback?.({ event: gatewayEventNames.request, payload: { trace_id: "t-2" } });
 
     expect(tauriListen).toHaveBeenCalledTimes(2);
     expect(handler).toHaveBeenCalledWith({ trace_id: "t-2" });

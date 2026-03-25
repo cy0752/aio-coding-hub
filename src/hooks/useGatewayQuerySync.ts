@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { gatewayEventNames } from "../constants/gatewayEvents";
 import { gatewayKeys, requestLogsKeys, usageKeys } from "../query/keys";
 import { logToConsole } from "../services/consoleLog";
-import { gatewayEventNames, subscribeGatewayEvent } from "../services/gatewayEventBus";
+import { subscribeGatewayEvent } from "../services/gatewayEventBus";
 
 const CIRCUIT_INVALIDATE_THROTTLE_MS = 500;
 const STATUS_INVALIDATE_THROTTLE_MS = 300;

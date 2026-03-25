@@ -216,7 +216,7 @@ pub fn run() {
                     }
                 };
 
-                let _ = app_handle.emit("gateway:status", status.clone());
+                let _ = app_handle.emit(crate::gateway::events::GATEWAY_STATUS_EVENT_NAME, status.clone());
 
                 // WSL auto-detect and auto-configure (Windows only, gated by wsl_auto_config)
                 #[cfg(windows)]
@@ -453,7 +453,9 @@ pub fn run() {
 ///
 /// Uses `tauri_specta::Builder` to export TypeScript bindings for the subset of
 /// Tauri commands annotated with `#[specta::specta]`.
-/// Currently exports the `settings` and provider IPC contracts covered by `#[specta::specta]`.
+/// Currently exports only the `settings_get`, `settings_set`, `providers_list`, and
+/// `provider_upsert` IPC contracts covered by `#[specta::specta]`.
+/// Do not treat the generated file as the full desktop command surface.
 ///
 /// Run `cargo test export_bindings -- --ignored` to regenerate `src/generated/bindings.ts`.
 #[cfg(test)]
@@ -473,7 +475,8 @@ fn export_bindings() {
             specta_typescript::Typescript::default()
                 .header(
                     "/* eslint-disable */
-// @ts-nocheck",
+// @ts-nocheck
+// NOTE: Partial IPC contract only. Currently exports settings_get, settings_set, providers_list, and provider_upsert.",
                 )
                 .bigint(specta_typescript::BigIntExportBehavior::Number),
             "../src/generated/bindings.ts",

@@ -2,34 +2,11 @@
 // - Import helpers/components from this module for Home "request logs" list and "realtime traces" cards.
 // - Designed to keep status badge / error_code label / session reuse tooltip consistent across the Home page.
 
-import { GatewayErrorCodes } from "../../constants/gatewayErrorCodes";
+import { GatewayErrorCodes, getGatewayErrorShortLabel } from "../../constants/gatewayErrorCodes";
 import type { CliKey } from "../../services/providers";
 import type { RequestLogRouteHop } from "../../services/requestLogs";
 import { Tooltip } from "../../ui/Tooltip";
 import { RouteTooltipContent } from "./RouteTooltipContent";
-
-const ERROR_CODE_LABELS: Record<string, string> = {
-  [GatewayErrorCodes.ALL_PROVIDERS_UNAVAILABLE]: "全部不可用",
-  [GatewayErrorCodes.UPSTREAM_ALL_FAILED]: "全部失败",
-  [GatewayErrorCodes.NO_ENABLED_PROVIDER]: "无供应商",
-  [GatewayErrorCodes.UPSTREAM_TIMEOUT]: "上游超时",
-  [GatewayErrorCodes.UPSTREAM_CONNECT_FAILED]: "连接失败",
-  [GatewayErrorCodes.UPSTREAM_5XX]: "上游5XX",
-  [GatewayErrorCodes.UPSTREAM_4XX]: "上游4XX",
-  [GatewayErrorCodes.UPSTREAM_READ_ERROR]: "读取错误",
-  [GatewayErrorCodes.STREAM_ERROR]: "流错误",
-  [GatewayErrorCodes.STREAM_ABORTED]: "流中断",
-  [GatewayErrorCodes.STREAM_IDLE_TIMEOUT]: "流空闲超时",
-  [GatewayErrorCodes.REQUEST_ABORTED]: "请求中断",
-  [GatewayErrorCodes.INTERNAL_ERROR]: "内部错误",
-  [GatewayErrorCodes.BODY_TOO_LARGE]: "请求过大",
-  [GatewayErrorCodes.INVALID_CLI_KEY]: "无效CLI",
-  [GatewayErrorCodes.INVALID_BASE_URL]: "无效URL",
-  [GatewayErrorCodes.PORT_IN_USE]: "端口占用",
-  [GatewayErrorCodes.RESPONSE_BUILD_ERROR]: "响应构建错误",
-  [GatewayErrorCodes.PROVIDER_RATE_LIMITED]: "供应商限额",
-  [GatewayErrorCodes.PROVIDER_CIRCUIT_OPEN]: "供应商熔断",
-};
 
 const CLIENT_ABORT_ERROR_CODES: ReadonlySet<string> = new Set([
   GatewayErrorCodes.STREAM_ABORTED,
@@ -42,7 +19,7 @@ const SESSION_REUSE_TOOLTIP =
   "同一 session_id 在 5 分钟 TTL 内优先复用上一次成功 provider，减少抖动/提升缓存命中";
 
 export function getErrorCodeLabel(errorCode: string) {
-  return ERROR_CODE_LABELS[errorCode] ?? errorCode;
+  return getGatewayErrorShortLabel(errorCode);
 }
 
 export function SessionReuseBadge({ showCustomTooltip }: { showCustomTooltip: boolean }) {

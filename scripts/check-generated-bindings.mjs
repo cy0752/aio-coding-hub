@@ -6,6 +6,27 @@ import { fileURLToPath } from "node:url";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = dirname(scriptDir);
 const bindingsPath = join(repoRoot, "src", "generated", "bindings.ts");
+const EXPECTED_HOME_USAGE_PERIOD_LITERALS = ["last7", "last15", "last30", "month"];
+
+function parseHomeUsagePeriodLiterals(source) {
+  const match = source.match(/export type HomeUsagePeriod = ([^;]+);/);
+  if (!match) {
+    throw new Error("Missing HomeUsagePeriod export in generated bindings.");
+  }
+  return Array.from(match[1].matchAll(/"([^"]+)"/g), (part) => part[1]);
+}
+
+function assertHomeUsagePeriodContract(source) {
+  const actual = parseHomeUsagePeriodLiterals(source);
+  if (JSON.stringify(actual) === JSON.stringify(EXPECTED_HOME_USAGE_PERIOD_LITERALS)) return;
+
+  throw new Error(
+    `HomeUsagePeriod contract drifted. Expected ${EXPECTED_HOME_USAGE_PERIOD_LITERALS.join(
+      ", "
+    )}; received ${actual.join(", ")}.`
+  );
+}
+
 const before = existsSync(bindingsPath) ? readFileSync(bindingsPath, "utf8") : null;
 
 execFileSync("pnpm", ["tauri:gen-types"], {
@@ -21,6 +42,20 @@ execFileSync("pnpm", ["exec", "prettier", "--write", bindingsPath], {
 });
 
 const after = existsSync(bindingsPath) ? readFileSync(bindingsPath, "utf8") : null;
+if (after == null) {
+  console.error("Generated bindings file is missing: src/generated/bindings.ts");
+  process.exit(1);
+}
+
+if (after != null) {
+  try {
+    assertHomeUsagePeriodContract(after);
+  } catch (error) {
+    console.error(String(error));
+    process.exit(1);
+  }
+}
+
 if (before !== after) {
   console.error("Generated bindings were outdated. Review and commit src/generated/bindings.ts.");
   process.exit(1);

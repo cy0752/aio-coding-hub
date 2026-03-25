@@ -1,6 +1,7 @@
 import { render } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
+import { gatewayEventNames } from "../../constants/gatewayEvents";
 import { useGatewayQuerySync } from "../useGatewayQuerySync";
 import { createTestQueryClient } from "../../test/utils/reactQuery";
 import { setTauriRuntime } from "../../test/utils/tauriRuntime";
@@ -36,12 +37,12 @@ describe("hooks/useGatewayQuerySync", () => {
     await vi.runAllTimersAsync();
     await Promise.resolve();
 
-    expect(handlers.has("gateway:circuit")).toBe(true);
-    expect(handlers.has("gateway:status")).toBe(true);
-    expect(handlers.has("gateway:request")).toBe(true);
+    expect(handlers.has(gatewayEventNames.circuit)).toBe(true);
+    expect(handlers.has(gatewayEventNames.status)).toBe(true);
+    expect(handlers.has(gatewayEventNames.request)).toBe(true);
 
     // Circuit invalidation throttled at 500ms.
-    const circuitHandler = handlers.get("gateway:circuit")!;
+    const circuitHandler = handlers.get(gatewayEventNames.circuit)!;
     circuitHandler({ payload: null });
     circuitHandler({ payload: null }); // should be ignored while timer is set
     vi.advanceTimersByTime(499);
@@ -50,14 +51,14 @@ describe("hooks/useGatewayQuerySync", () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: gatewayKeys.circuits() });
 
     // Status invalidation throttled at 300ms.
-    const statusHandler = handlers.get("gateway:status")!;
+    const statusHandler = handlers.get(gatewayEventNames.status)!;
     statusHandler({ payload: null });
     statusHandler({ payload: null });
     vi.advanceTimersByTime(300);
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: gatewayKeys.status() });
 
     // Request invalidation throttled at 1000ms.
-    const requestHandler = handlers.get("gateway:request")!;
+    const requestHandler = handlers.get(gatewayEventNames.request)!;
     requestHandler({ payload: null });
     requestHandler({ payload: null });
     vi.advanceTimersByTime(1000);

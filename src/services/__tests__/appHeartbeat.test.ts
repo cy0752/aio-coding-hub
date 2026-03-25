@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { appEventNames } from "../../constants/appEvents";
 import { setTauriRuntime, clearTauriRuntime } from "../../test/utils/tauriRuntime";
 import { tauriListen, emitTauriEvent } from "../../test/mocks/tauri";
 
@@ -25,12 +26,12 @@ describe("services/appHeartbeat", () => {
     return await import("../appHeartbeat");
   }
 
-  it("listens to app:heartbeat with tauri runtime", async () => {
+  it("listens to app heartbeat with tauri runtime", async () => {
     setTauriRuntime();
     const { listenAppHeartbeat } = await importFresh();
     const unlisten = await listenAppHeartbeat();
 
-    expect(tauriListen).toHaveBeenCalledWith("app:heartbeat", expect.any(Function));
+    expect(tauriListen).toHaveBeenCalledWith(appEventNames.heartbeat, expect.any(Function));
 
     unlisten();
   });
@@ -40,7 +41,7 @@ describe("services/appHeartbeat", () => {
     const { listenAppHeartbeat } = await importFresh();
     await listenAppHeartbeat();
 
-    emitTauriEvent("app:heartbeat", {});
+    emitTauriEvent(appEventNames.heartbeat, {});
 
     await vi.waitFor(() => {
       expect(invokeTauriOrNull).toHaveBeenCalledWith("app_heartbeat_pong", undefined, {
@@ -55,7 +56,7 @@ describe("services/appHeartbeat", () => {
     const { listenAppHeartbeat } = await importFresh();
     await listenAppHeartbeat();
 
-    emitTauriEvent("app:heartbeat", {});
+    emitTauriEvent(appEventNames.heartbeat, {});
 
     // Should not throw
     await vi.waitFor(() => {

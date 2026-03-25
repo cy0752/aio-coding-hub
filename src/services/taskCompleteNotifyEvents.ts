@@ -8,8 +8,10 @@
  */
 
 import { useSyncExternalStore } from "react";
+import { cliShortLabel } from "../constants/clis";
+import { gatewayEventNames } from "../constants/gatewayEvents";
 import { logToConsole } from "./consoleLog";
-import { gatewayEventNames, subscribeGatewayEvent } from "./gatewayEventBus";
+import { subscribeGatewayEvent } from "./gatewayEventBus";
 import { noticeSend } from "./notice";
 import type { GatewayRequestEvent, GatewayRequestStartEvent } from "./gatewayEvents";
 
@@ -88,16 +90,7 @@ const sessions = new Map<string, SessionState>();
 // ---------------------------------------------------------------------------
 
 function cliKeyDisplayName(cliKey: string): string {
-  switch (cliKey) {
-    case "claude":
-      return "Claude";
-    case "codex":
-      return "Codex";
-    case "gemini":
-      return "Gemini";
-    default:
-      return cliKey;
-  }
+  return cliShortLabel(cliKey);
 }
 
 function formatDuration(ms: number): string {

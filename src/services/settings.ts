@@ -1,10 +1,11 @@
+import type { HomeUsagePeriod } from "../constants/homeUsagePeriods";
 import { invokeService } from "./invokeServiceCommand";
 
 export type GatewayListenMode = "localhost" | "wsl_auto" | "lan" | "custom";
 
 export type WslHostAddressMode = "auto" | "custom";
 export type CodexHomeMode = "user_home_default" | "follow_codex_home" | "custom";
-export type HomeUsagePeriod = "last7" | "last15" | "last30" | "month";
+export type { HomeUsagePeriod };
 
 export type WslTargetCli = {
   claude: boolean;

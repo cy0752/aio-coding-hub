@@ -1,7 +1,8 @@
 import { GatewayErrorCodes } from "../constants/gatewayErrorCodes";
+import { gatewayEventNames } from "../constants/gatewayEvents";
 import { computeOutputTokensPerSecond as computeOutputTokensPerSecondRaw } from "../utils/formatters";
 import { logToConsole, shouldLogToConsole } from "./consoleLog";
-import { gatewayEventNames, subscribeGatewayEvent } from "./gatewayEventBus";
+import { subscribeGatewayEvent } from "./gatewayEventBus";
 import { ingestTraceAttempt, ingestTraceRequest, ingestTraceStart } from "./traceStore";
 import { ingestCacheAnomalyRequest, ingestCacheAnomalyRequestStart } from "./cacheAnomalyMonitor";
 
@@ -32,8 +33,6 @@ export type GatewayRequestEvent = {
   cache_creation_input_tokens?: number | null;
   cache_creation_5m_input_tokens?: number | null;
   cache_creation_1h_input_tokens?: number | null;
-  cost_usd?: number | null;
-  cost_multiplier?: number | null;
 };
 
 export type GatewayRequestStartEvent = {

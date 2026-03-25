@@ -12,6 +12,7 @@ import {
   type ConsoleLogLevel,
   useConsoleLogs,
 } from "../services/consoleLog";
+import { gatewayEventNames } from "../constants/gatewayEvents";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronRight, Search, Filter } from "lucide-react";
 import { toast } from "sonner";
@@ -57,7 +58,7 @@ function getLevelBadgeStyles(level: ConsoleLogEntry["level"]) {
 }
 /** Left color bar indicator class based on event type and level */
 function getRowIndicatorClass(entry: ConsoleLogEntry): string | null {
-  if (entry.eventType === "gateway:circuit") {
+  if (entry.eventType === gatewayEventNames.circuit) {
     if (entry.level === "warn") return "border-l-2 border-red-500";
     if (entry.level === "info") return "border-l-2 border-green-500";
   }

@@ -8,6 +8,7 @@
 
 import { listen } from "@tauri-apps/api/event";
 
+import { appEventNames } from "../constants/appEvents";
 import { logToConsole } from "./consoleLog";
 import type { NoticeLevel } from "./notice";
 
@@ -20,7 +21,7 @@ export type NoticeEventPayload = {
 export async function listenNoticeEvents(): Promise<() => void> {
   const { isPermissionGranted, sendNotification } = await import("@tauri-apps/plugin-notification");
 
-  const unlisten = await listen<NoticeEventPayload>("notice:notify", async (event) => {
+  const unlisten = await listen<NoticeEventPayload>(appEventNames.notice, async (event) => {
     const payload = event.payload;
     if (!payload) return;
 

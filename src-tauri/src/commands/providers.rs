@@ -1,6 +1,7 @@
 //! Usage: Provider configuration related Tauri commands.
 
 use crate::app_state::{ensure_db_ready, DbInitState, GatewayState};
+use crate::gateway::events::GATEWAY_STATUS_EVENT_NAME;
 use crate::shared::mutex_ext::MutexExt;
 use crate::{base_url_probe, blocking, providers};
 use serde_json::json;
@@ -350,7 +351,7 @@ fn ensure_gateway_base_origin(
 
     drop(manager);
 
-    let _ = app.emit("gateway:status", status.clone());
+    let _ = app.emit(GATEWAY_STATUS_EVENT_NAME, status.clone());
 
     status
         .base_url

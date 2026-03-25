@@ -1,6 +1,7 @@
 //! Usage: CLI proxy configuration related Tauri commands.
 
 use crate::app_state::{ensure_db_ready, DbInitState, GatewayState};
+use crate::gateway::events::GATEWAY_STATUS_EVENT_NAME;
 use crate::shared::mutex_ext::MutexExt;
 use crate::{blocking, cli_proxy, mcp, settings};
 use tauri::Emitter;
@@ -38,7 +39,7 @@ pub(crate) async fn cli_proxy_set_enabled(
                 } else {
                     let settings = settings::read(&app).unwrap_or_default();
                     let status = manager.start(&app, db, Some(settings.preferred_port))?;
-                    let _ = app.emit("gateway:status", status.clone());
+                    let _ = app.emit(GATEWAY_STATUS_EVENT_NAME, status.clone());
                     status
                 };
 

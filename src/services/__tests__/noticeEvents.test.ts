@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { appEventNames } from "../../constants/appEvents";
 import {
   tauriIsPermissionGranted,
   tauriListen,
@@ -24,9 +25,11 @@ describe("services/noticeEvents", () => {
     const { listenNoticeEvents } = await import("../noticeEvents");
     const unlisten = await listenNoticeEvents();
 
-    expect(tauriListen).toHaveBeenCalledWith("notice:notify", expect.any(Function));
+    expect(tauriListen).toHaveBeenCalledWith(appEventNames.notice, expect.any(Function));
 
-    const handler = vi.mocked(tauriListen).mock.calls.find((c) => c[0] === "notice:notify")?.[1];
+    const handler = vi
+      .mocked(tauriListen)
+      .mock.calls.find((c) => c[0] === appEventNames.notice)?.[1];
     expect(handler).toBeTypeOf("function");
 
     await handler?.({ payload: { level: "info", title: "T", body: "B" } } as any);
@@ -47,7 +50,9 @@ describe("services/noticeEvents", () => {
     const { listenNoticeEvents } = await import("../noticeEvents");
     await listenNoticeEvents();
 
-    const handler = vi.mocked(tauriListen).mock.calls.find((c) => c[0] === "notice:notify")?.[1];
+    const handler = vi
+      .mocked(tauriListen)
+      .mock.calls.find((c) => c[0] === appEventNames.notice)?.[1];
     await handler?.({ payload: { level: "info", title: "T", body: "B" } } as any);
 
     expect(tauriSendNotification).not.toHaveBeenCalled();
@@ -64,7 +69,9 @@ describe("services/noticeEvents", () => {
     const { listenNoticeEvents } = await import("../noticeEvents");
     await listenNoticeEvents();
 
-    const handler = vi.mocked(tauriListen).mock.calls.find((c) => c[0] === "notice:notify")?.[1];
+    const handler = vi
+      .mocked(tauriListen)
+      .mock.calls.find((c) => c[0] === appEventNames.notice)?.[1];
     expect(handler).toBeTypeOf("function");
 
     await handler?.({ payload: { level: "error", title: "T", body: "B" } } as any);

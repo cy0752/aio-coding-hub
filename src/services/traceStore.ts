@@ -5,6 +5,12 @@ import type {
   GatewayRequestStartEvent,
 } from "./gatewayEvents";
 
+export type TraceSummary = GatewayRequestEvent & {
+  // Preview/demo traces may carry cost hints that are not part of the runtime gateway event payload.
+  cost_usd?: number | null;
+  cost_multiplier?: number | null;
+};
+
 export type TraceSession = {
   trace_id: string;
   cli_key: string;
@@ -15,7 +21,7 @@ export type TraceSession = {
   first_seen_ms: number;
   last_seen_ms: number;
   attempts: GatewayAttemptEvent[];
-  summary?: GatewayRequestEvent;
+  summary?: TraceSummary;
 };
 
 export type TraceStoreSnapshot = {

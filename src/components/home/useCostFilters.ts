@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { cliShortLabel } from "../../constants/clis";
+import { CLI_FILTER_SHORT_ITEMS, cliShortLabel } from "../../constants/clis";
 import { useCustomDateRange } from "../../hooks/useCustomDateRange";
 import { useTheme } from "../../hooks/useTheme";
 import { useCostAnalyticsV1Query } from "../../query/cost";
@@ -17,13 +17,7 @@ import { pickTopSlices, toDateLabel } from "../../utils/chartHelpers";
 export type CliFilter = "all" | CliKey;
 
 export type CliItem = { key: CliFilter; label: string };
-
-export const CLI_ITEMS: CliItem[] = [
-  { key: "all", label: "全部" },
-  { key: "claude", label: "Claude" },
-  { key: "codex", label: "Codex" },
-  { key: "gemini", label: "Gemini" },
-];
+export const CLI_ITEMS: CliItem[] = CLI_FILTER_SHORT_ITEMS;
 
 // Scatter chart point type used by CostScatterChart
 export type ScatterPoint = {

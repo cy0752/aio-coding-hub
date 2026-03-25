@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   CLIS,
   CLI_FILTER_ITEMS,
+  CLI_FILTER_SHORT_ITEMS,
+  CLI_SHORT_ITEMS,
   cliBadgeTone,
   cliBadgeToneStatic,
   cliFromKeyOrDefault,
@@ -16,6 +18,13 @@ describe("constants/clis", () => {
     expect(CLIS.map((cli) => cli.key)).toEqual(["claude", "codex", "gemini"]);
     expect(CLI_FILTER_ITEMS[0]).toEqual({ key: "all", label: "全部" });
     expect(CLI_FILTER_ITEMS.map((item) => item.key)).toContain("claude");
+    expect(CLI_SHORT_ITEMS).toEqual([
+      { key: "claude", label: "Claude" },
+      { key: "codex", label: "Codex" },
+      { key: "gemini", label: "Gemini" },
+    ]);
+    expect(CLI_FILTER_SHORT_ITEMS[0]).toEqual({ key: "all", label: "全部" });
+    expect(CLI_FILTER_SHORT_ITEMS.slice(1)).toEqual(CLI_SHORT_ITEMS);
   });
 
   it("handles key and label helpers", () => {
