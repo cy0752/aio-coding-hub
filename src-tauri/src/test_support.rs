@@ -343,6 +343,26 @@ pub fn cli_proxy_set_enabled_json<R: tauri::Runtime>(
     serialize_json(result)
 }
 
+pub fn cli_proxy_set_enabled_via_command_json<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    cli_key: &str,
+    enabled: bool,
+) -> crate::shared::error::AppResult<serde_json::Value> {
+    if enabled {
+        return Err(
+            "SYSTEM_ERROR: cli_proxy_set_enabled_via_command_json only supports disable path tests"
+                .into(),
+        );
+    }
+    let result =
+        tauri::async_runtime::block_on(crate::commands::cli_proxy::cli_proxy_set_disabled_impl(
+            app.clone(),
+            None,
+            cli_key.to_string(),
+        ))?;
+    serialize_json(result)
+}
+
 pub fn cli_proxy_startup_repair_incomplete_enable_json<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
 ) -> crate::shared::error::AppResult<serde_json::Value> {
@@ -355,6 +375,16 @@ pub fn cli_proxy_restore_enabled_keep_state_json<R: tauri::Runtime>(
 ) -> crate::shared::error::AppResult<serde_json::Value> {
     let results = crate::infra::cli_proxy::restore_enabled_keep_state(app)?;
     serialize_json(results)
+}
+
+pub fn gateway_check_port_available_json<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    port: u16,
+) -> crate::shared::error::AppResult<bool> {
+    tauri::async_runtime::block_on(crate::commands::gateway::gateway_check_port_available_impl(
+        app.clone(),
+        port,
+    ))
 }
 
 pub fn cli_manager_codex_config_set_json<R: tauri::Runtime>(
@@ -414,6 +444,22 @@ pub fn settings_set_json<R: tauri::Runtime>(
     let settings: crate::settings::AppSettings = serde_json::from_value(update)
         .map_err(|e| format!("SEC_INVALID_INPUT: invalid settings json: {e}"))?;
     let persisted = crate::settings::write(app, &settings)?;
+    serialize_json(persisted)
+}
+
+/// Update application settings through the real `settings_set` command path.
+///
+/// This exercises the same read-merge-write logic as the frontend settings page.
+pub fn settings_set_via_command_json<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    update: serde_json::Value,
+) -> crate::shared::error::AppResult<serde_json::Value> {
+    let update: crate::commands::settings::SettingsUpdate = serde_json::from_value(update)
+        .map_err(|e| format!("SEC_INVALID_INPUT: invalid settings command payload: {e}"))?;
+    let persisted = tauri::async_runtime::block_on(crate::commands::settings::settings_set_impl(
+        app.clone(),
+        update,
+    ))?;
     serialize_json(persisted)
 }
 

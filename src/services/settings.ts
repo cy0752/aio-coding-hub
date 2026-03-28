@@ -1,5 +1,6 @@
 import type { HomeUsagePeriod } from "../constants/homeUsagePeriods";
-import { invokeService } from "./invokeServiceCommand";
+import { commands } from "../generated/bindings";
+import { invokeGeneratedIpc, type GeneratedCommandResult } from "./generatedIpc";
 
 export type GatewayListenMode = "localhost" | "wsl_auto" | "lan" | "custom";
 
@@ -103,9 +104,21 @@ export type SettingsSetInput = {
 };
 
 export async function settingsGet() {
-  return invokeService<AppSettings>("读取设置失败", "settings_get");
+  return invokeGeneratedIpc<AppSettings>({
+    title: "读取设置失败",
+    cmd: "settings_get",
+    invoke: () => commands.settingsGet() as Promise<GeneratedCommandResult<AppSettings>>,
+  });
 }
 
 export async function settingsSet(input: SettingsSetInput) {
-  return invokeService<AppSettings>("更新设置失败", "settings_set", { update: input });
+  return invokeGeneratedIpc<AppSettings>({
+    title: "更新设置失败",
+    cmd: "settings_set",
+    args: { update: input },
+    invoke: () =>
+      commands.settingsSet(input as Parameters<typeof commands.settingsSet>[0]) as Promise<
+        GeneratedCommandResult<AppSettings>
+      >,
+  });
 }

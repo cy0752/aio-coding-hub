@@ -253,6 +253,7 @@ export function WslSettingsCard({ available, saving, settings }: WslSettingsCard
 
   async function confirmSwitchListenMode() {
     if (!available) return;
+    if (saving || settingsMutating || switchingListenMode) return;
     setSwitchingListenMode(true);
     try {
       const updated = await settingsSetMutation.mutateAsync({
@@ -613,6 +614,7 @@ export function WslSettingsCard({ available, saving, settings }: WslSettingsCard
         confirmLabel="切换"
         confirmingLabel="切换中..."
         confirming={switchingListenMode}
+        disabled={saving || settingsMutating}
       />
     </Card>
   );

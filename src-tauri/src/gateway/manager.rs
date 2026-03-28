@@ -153,7 +153,7 @@ impl GatewayManager {
             .filter(|p| *p > 0)
             .unwrap_or(settings::DEFAULT_GATEWAY_PORT);
 
-        let cfg = settings::read(app).unwrap_or_default();
+        let cfg = settings::read(app)?;
         let (bind_host, fixed_port) = match cfg.gateway_listen_mode {
             settings::GatewayListenMode::Localhost => ("127.0.0.1".to_string(), None),
             settings::GatewayListenMode::Lan => ("0.0.0.0".to_string(), None),
@@ -226,13 +226,10 @@ impl GatewayManager {
             }
         };
 
-        let circuit_config = match settings::read(app) {
-            Ok(cfg) => circuit_breaker::CircuitBreakerConfig {
-                failure_threshold: cfg.circuit_breaker_failure_threshold.max(1),
-                open_duration_secs: (cfg.circuit_breaker_open_duration_minutes as i64)
-                    .saturating_mul(60),
-            },
-            Err(_) => circuit_breaker::CircuitBreakerConfig::default(),
+        let circuit_config = circuit_breaker::CircuitBreakerConfig {
+            failure_threshold: cfg.circuit_breaker_failure_threshold.max(1),
+            open_duration_secs: (cfg.circuit_breaker_open_duration_minutes as i64)
+                .saturating_mul(60),
         };
         let circuit = Arc::new(circuit_breaker::CircuitBreaker::new(
             circuit_config,
@@ -336,7 +333,7 @@ impl GatewayManager {
         }
 
         let persisted = provider_circuit_breakers::load_all(db).unwrap_or_default();
-        let cfg = settings::read(app).unwrap_or_default();
+        let cfg = settings::read(app)?;
         let failure_threshold = cfg.circuit_breaker_failure_threshold.max(1);
 
         Ok(provider_ids

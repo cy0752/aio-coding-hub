@@ -147,6 +147,59 @@ fn claude_proxy_disable_restores_original_settings_bytes() {
 }
 
 #[test]
+fn claude_proxy_disable_via_command_restores_backup_when_app_settings_json_is_corrupted() {
+    let app = support::TestApp::new();
+    let handle = app.handle();
+    let settings_path = app.home_dir().join(".claude").join("settings.json");
+
+    std::fs::create_dir_all(settings_path.parent().expect("settings dir")).expect("create dir");
+
+    let original_json: Value = serde_json::from_str(
+        r#"{
+  "model": "claude-opus-4",
+  "env": {
+    "KEEP_ME": "x",
+    "ANTHROPIC_BASE_URL": "https://example.com",
+    "ANTHROPIC_AUTH_TOKEN": "sk-real"
+  }
+}"#,
+    )
+    .expect("parse original");
+    std::fs::write(
+        &settings_path,
+        serde_json::to_vec_pretty(&original_json).expect("serialize"),
+    )
+    .expect("write settings");
+
+    aio_coding_hub_lib::test_support::cli_proxy_set_enabled_json(
+        &handle,
+        "claude",
+        true,
+        "http://127.0.0.1:37123",
+    )
+    .expect("enable claude proxy");
+
+    let app_data_dir =
+        aio_coding_hub_lib::test_support::app_data_dir(&handle).expect("app data dir");
+    std::fs::create_dir_all(&app_data_dir).expect("create app data dir");
+    std::fs::write(app_data_dir.join("settings.json"), "{invalid json")
+        .expect("write corrupted settings");
+
+    let disabled = aio_coding_hub_lib::test_support::cli_proxy_set_enabled_via_command_json(
+        &handle, "claude", false,
+    )
+    .expect("disable claude proxy via command");
+
+    assert!(disabled
+        .get("ok")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false));
+
+    let restored = read_json(&settings_path);
+    assert_eq!(restored, original_json);
+}
+
+#[test]
 fn claude_proxy_disable_restores_direct_env_after_settings_patch() {
     let app = support::TestApp::new();
     let handle = app.handle();

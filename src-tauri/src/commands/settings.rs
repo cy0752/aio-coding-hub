@@ -3,6 +3,17 @@
 use crate::{blocking, resident, settings};
 use tauri::Manager;
 
+fn read_settings_for_update<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> crate::shared::error::AppResult<settings::AppSettings> {
+    settings::read(app).map_err(|err| {
+        format!(
+            "SETTINGS_RECOVERY_REQUIRED: settings.json could not be read; fix or restore it before saving: {err}"
+        )
+        .into()
+    })
+}
+
 /// Encapsulates all fields for the `settings_set` command.
 #[derive(serde::Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -60,6 +71,13 @@ pub(crate) async fn settings_get(app: tauri::AppHandle) -> Result<settings::AppS
 #[specta::specta]
 pub(crate) async fn settings_set(
     app: tauri::AppHandle,
+    update: SettingsUpdate,
+) -> Result<settings::AppSettings, String> {
+    settings_set_impl(app, update).await
+}
+
+pub(crate) async fn settings_set_impl<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     update: SettingsUpdate,
 ) -> Result<settings::AppSettings, String> {
     let SettingsUpdate {
@@ -120,7 +138,7 @@ pub(crate) async fn settings_set(
     let next_settings = blocking::run(
         "settings_set",
         move || -> crate::shared::error::AppResult<settings::AppSettings> {
-            let previous = settings::read(&app_for_work).unwrap_or_default();
+            let previous = read_settings_for_update(&app_for_work)?;
             let update_releases_url = update_releases_url.unwrap_or(previous.update_releases_url);
             let tray_enabled = tray_enabled.unwrap_or(previous.tray_enabled);
             let start_minimized = start_minimized.unwrap_or(previous.start_minimized);
@@ -316,7 +334,7 @@ pub(crate) async fn settings_gateway_rectifier_set(
 ) -> Result<settings::AppSettings, String> {
     let app_for_work = app.clone();
     let result = blocking::run("settings_gateway_rectifier_set", move || {
-        let mut settings = settings::read(&app_for_work).unwrap_or_default();
+        let mut settings = read_settings_for_update(&app_for_work)?;
         settings.schema_version = settings::SCHEMA_VERSION;
 
         settings.verbose_provider_error = verbose_provider_error;
@@ -360,7 +378,7 @@ pub(crate) async fn settings_circuit_breaker_notice_set(
 ) -> Result<settings::AppSettings, String> {
     let app_for_work = app.clone();
     blocking::run("settings_circuit_breaker_notice_set", move || {
-        let mut settings = settings::read(&app_for_work).unwrap_or_default();
+        let mut settings = read_settings_for_update(&app_for_work)?;
         settings.schema_version = settings::SCHEMA_VERSION;
         settings.enable_circuit_breaker_notice = enable_circuit_breaker_notice;
         settings::write(&app_for_work, &settings)
@@ -376,7 +394,7 @@ pub(crate) async fn settings_codex_session_id_completion_set(
 ) -> Result<settings::AppSettings, String> {
     let app_for_work = app.clone();
     blocking::run("settings_codex_session_id_completion_set", move || {
-        let mut settings = settings::read(&app_for_work).unwrap_or_default();
+        let mut settings = read_settings_for_update(&app_for_work)?;
         settings.schema_version = settings::SCHEMA_VERSION;
         settings.enable_codex_session_id_completion = enable_codex_session_id_completion;
         settings::write(&app_for_work, &settings)

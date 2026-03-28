@@ -173,9 +173,112 @@ describe("settings/useSettingsPersistence", () => {
     await waitFor(() => {
       expect(result.current.settingsReady).toBe(true);
     });
+    expect(result.current.settingsWriteBlocked).toBe(true);
+    expect(result.current.settingsReadErrorMessage).toContain("已进入只读保护");
     expect(logToConsole).toHaveBeenCalledWith("error", "读取设置失败", { error: "Error: boom" });
     expect(toast).toHaveBeenCalledWith(
-      "读取设置失败：请检查 settings.json；修改任一配置将尝试覆盖写入修复"
+      "设置文件读取失败，已进入只读保护。请先修复或恢复 settings.json 后刷新页面。"
+    );
+  });
+
+  it("clears readonly protection when a later query succeeds", async () => {
+    const mutation = { mutateAsync: vi.fn() };
+    vi.mocked(useSettingsSetMutation).mockReturnValue(mutation as any);
+
+    let queryState: any = {
+      data: null,
+      isLoading: false,
+      isError: true,
+      error: new Error("boom"),
+    };
+
+    vi.mocked(useSettingsQuery).mockImplementation(() => queryState);
+
+    const { result, rerender } = renderHook(() =>
+      useSettingsPersistence({ gateway: null, about: null })
+    );
+
+    await waitFor(() => expect(result.current.settingsWriteBlocked).toBe(true));
+    expect(result.current.port).toBe(37123);
+    expect(toast).toHaveBeenCalledTimes(1);
+
+    queryState = {
+      data: createSettings({ preferred_port: 38001, show_home_heatmap: false }),
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+    rerender();
+
+    await waitFor(() => expect(result.current.settingsWriteBlocked).toBe(false));
+    expect(result.current.settingsReadErrorMessage).toBeNull();
+    expect(result.current.port).toBe(38001);
+    expect(result.current.showHomeHeatmap).toBe(false);
+    expect(toast).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps showing cached data but blocks writes when refetch falls back to stale data", async () => {
+    vi.mocked(useSettingsQuery).mockReturnValue({
+      data: createSettings({ preferred_port: 38002 }),
+      isLoading: false,
+      isError: true,
+      error: new Error("stale boom"),
+    } as any);
+
+    vi.mocked(useSettingsSetMutation).mockReturnValue({ mutateAsync: vi.fn() } as any);
+
+    const { result } = renderHook(() => useSettingsPersistence({ gateway: null, about: null }));
+
+    await waitFor(() => expect(result.current.settingsReady).toBe(true));
+
+    expect(result.current.settingsWriteBlocked).toBe(true);
+    expect(result.current.settingsReadErrorMessage).toContain("已进入只读保护");
+    expect(result.current.port).toBe(38002);
+    expect(logToConsole).toHaveBeenCalledWith("error", "读取设置失败", {
+      error: "Error: stale boom",
+    });
+    expect(toast).toHaveBeenCalledWith(
+      "设置文件读取失败，已进入只读保护。请先修复或恢复 settings.json 后刷新页面。"
+    );
+  });
+
+  it("blocks requestPersist and commitNumberField when settings are readonly", async () => {
+    vi.mocked(useSettingsQuery).mockReturnValue({
+      data: null,
+      isLoading: false,
+      isError: true,
+      error: new Error("boom"),
+    } as any);
+
+    const mutation = { mutateAsync: vi.fn() };
+    vi.mocked(useSettingsSetMutation).mockReturnValue(mutation as any);
+
+    const { result } = renderHook(() => useSettingsPersistence({ gateway: null, about: null }));
+    await waitFor(() => expect(result.current.settingsReady).toBe(true));
+
+    vi.mocked(toast).mockClear();
+
+    act(() => {
+      result.current.setShowHomeHeatmap(false);
+      result.current.requestPersist({ show_home_heatmap: false });
+    });
+
+    act(() => {
+      result.current.setPort(40000);
+      result.current.commitNumberField({
+        key: "preferred_port",
+        next: 40000,
+        min: 1024,
+        max: 65535,
+        invalidMessage: "bad-port",
+      });
+    });
+
+    expect(mutation.mutateAsync).not.toHaveBeenCalled();
+    expect(result.current.showHomeHeatmap).toBe(true);
+    expect(result.current.port).toBe(37123);
+    expect(toast).toHaveBeenCalledWith(
+      "设置文件读取失败，已进入只读保护。请先修复或恢复 settings.json 后刷新页面。"
     );
   });
 
@@ -277,6 +380,49 @@ describe("settings/useSettingsPersistence", () => {
     await waitFor(() => expect(gatewayCheckPortAvailable).toHaveBeenCalledWith(40000));
     expect(toast).toHaveBeenCalledWith("端口 40000 已被占用，请换一个端口");
     expect(mutation.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("switches to readonly protection when port check fails because settings.json is broken", async () => {
+    vi.mocked(useSettingsQuery).mockReturnValue({
+      data: createSettings(),
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as any);
+
+    vi.mocked(gatewayCheckPortAvailable).mockRejectedValue(
+      new Error("SEC_INVALID_INPUT: invalid settings.json: boom")
+    );
+
+    const mutation = { mutateAsync: vi.fn() };
+    vi.mocked(useSettingsSetMutation).mockReturnValue(mutation as any);
+
+    const { result } = renderHook(() =>
+      useSettingsPersistence({
+        gateway: { running: false, port: null, base_url: null, listen_addr: null },
+        about: null,
+      })
+    );
+    await waitFor(() => expect(result.current.settingsReady).toBe(true));
+
+    act(() => {
+      result.current.commitNumberField({
+        key: "preferred_port",
+        next: 40000,
+        min: 1024,
+        max: 65535,
+        invalidMessage: "bad",
+      });
+    });
+
+    await waitFor(() => expect(gatewayCheckPortAvailable).toHaveBeenCalledWith(40000));
+    await waitFor(() => expect(result.current.settingsWriteBlocked).toBe(true));
+    expect(result.current.port).toBe(37123);
+    expect(mutation.mutateAsync).not.toHaveBeenCalled();
+    expect(toast).toHaveBeenCalledWith(
+      "设置文件读取失败，已进入只读保护。请先修复或恢复 settings.json 后刷新页面。"
+    );
+    expect(toast).not.toHaveBeenCalledWith("端口 40000 已被占用，请换一个端口");
   });
 
   it("queues pending persists and validates numeric bounds", async () => {
@@ -1011,6 +1157,47 @@ describe("settings/useSettingsPersistence", () => {
         apply_live: true,
       })
     );
+  });
+
+  it("keeps saved state when post-save sync throws", async () => {
+    vi.mocked(useSettingsQuery).mockReturnValue({
+      data: createSettings({ preferred_port: 37123 }),
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as any);
+
+    vi.mocked(gatewayCheckPortAvailable).mockResolvedValue(true);
+    vi.mocked(cliProxySyncEnabled).mockRejectedValue(new Error("sync boom"));
+
+    const mutation = { mutateAsync: vi.fn() };
+    mutation.mutateAsync.mockResolvedValue(createSettings({ preferred_port: 40000 }));
+    vi.mocked(useSettingsSetMutation).mockReturnValue(mutation as any);
+
+    const { result } = renderHook(() =>
+      useSettingsPersistence({
+        gateway: { running: false, port: null, base_url: null, listen_addr: null },
+        about: null,
+      })
+    );
+    await waitFor(() => expect(result.current.settingsReady).toBe(true));
+
+    act(() => {
+      result.current.commitNumberField({
+        key: "preferred_port",
+        next: 40000,
+        min: 1024,
+        max: 65535,
+        invalidMessage: "bad",
+      });
+    });
+
+    await waitFor(() => expect(mutation.mutateAsync).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith("设置已保存，但后续动作失败：请检查网关和 CLI 代理状态")
+    );
+    expect(result.current.port).toBe(40000);
+    expect(toast).not.toHaveBeenCalledWith("更新设置失败：请稍后重试");
   });
 
   it("toasts and reverts when settings_set throws", async () => {

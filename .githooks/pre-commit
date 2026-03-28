@@ -60,7 +60,11 @@ fi
 
 if [ "${#prettier_targets[@]}" -gt 0 ]; then
   pnpm exec prettier --write -- "${prettier_targets[@]}"
-  git add -- "${prettier_targets[@]}"
+  # Some committed template files live under paths that are ignored for new files
+  # (for example `src/templates/`). Refresh the index entries that are already
+  # staged instead of re-adding them, otherwise `git add` can fail on ignored
+  # parent paths and block the commit.
+  git update-index --again -- "${prettier_targets[@]}"
 fi
 
 # `cargo fmt` formats the crate/workspace; we only run it when staged Rust files exist.

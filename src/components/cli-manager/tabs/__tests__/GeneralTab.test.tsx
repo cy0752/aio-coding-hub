@@ -47,6 +47,8 @@ describe("cli-manager/GeneralTab", () => {
     renderTab(
       <CliManagerGeneralTab
         rectifierAvailable="unavailable"
+        settingsReadErrorMessage={null}
+        settingsWriteBlocked={false}
         rectifierSaving={false}
         rectifier={createRectifierPatch()}
         onPersistRectifier={vi.fn()}
@@ -115,6 +117,8 @@ describe("cli-manager/GeneralTab", () => {
     renderTab(
       <CliManagerGeneralTab
         rectifierAvailable="available"
+        settingsReadErrorMessage={null}
+        settingsWriteBlocked={false}
         rectifierSaving={false}
         rectifier={rectifier}
         onPersistRectifier={onPersistRectifier}
@@ -217,5 +221,55 @@ describe("cli-manager/GeneralTab", () => {
     fireEvent.change(inputs[6], { target: { value: "31" } });
     fireEvent.blur(inputs[6], { target: { value: "31" } });
     expect(setCircuitBreakerOpenDurationMinutes).toHaveBeenCalled();
+  });
+
+  it("shows readonly banner and disables settings controls", () => {
+    renderTab(
+      <CliManagerGeneralTab
+        rectifierAvailable="available"
+        settingsReadErrorMessage="设置文件读取失败"
+        settingsWriteBlocked={true}
+        rectifierSaving={false}
+        rectifier={createRectifierPatch()}
+        onPersistRectifier={vi.fn()}
+        circuitBreakerNoticeEnabled={false}
+        circuitBreakerNoticeSaving={false}
+        onPersistCircuitBreakerNotice={vi.fn()}
+        codexSessionIdCompletionEnabled={true}
+        codexSessionIdCompletionSaving={false}
+        onPersistCodexSessionIdCompletion={vi.fn()}
+        cacheAnomalyMonitorEnabled={false}
+        cacheAnomalyMonitorSaving={false}
+        onPersistCacheAnomalyMonitor={vi.fn()}
+        taskCompleteNotifyEnabled={true}
+        taskCompleteNotifySaving={false}
+        onPersistTaskCompleteNotify={vi.fn()}
+        notificationSoundEnabled={true}
+        notificationSoundSaving={false}
+        onPersistNotificationSound={vi.fn()}
+        appSettings={createTestAppSettings()}
+        commonSettingsSaving={false}
+        onPersistCommonSettings={vi.fn()}
+        upstreamFirstByteTimeoutSeconds={0}
+        setUpstreamFirstByteTimeoutSeconds={vi.fn()}
+        upstreamStreamIdleTimeoutSeconds={0}
+        setUpstreamStreamIdleTimeoutSeconds={vi.fn()}
+        upstreamRequestTimeoutNonStreamingSeconds={0}
+        setUpstreamRequestTimeoutNonStreamingSeconds={vi.fn()}
+        providerCooldownSeconds={30}
+        setProviderCooldownSeconds={vi.fn()}
+        providerBaseUrlPingCacheTtlSeconds={60}
+        setProviderBaseUrlPingCacheTtlSeconds={vi.fn()}
+        circuitBreakerFailureThreshold={5}
+        setCircuitBreakerFailureThreshold={vi.fn()}
+        circuitBreakerOpenDurationMinutes={30}
+        setCircuitBreakerOpenDurationMinutes={vi.fn()}
+        blurOnEnter={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("设置文件读取失败")).toBeInTheDocument();
+    expect(screen.getAllByRole("switch")[0]).toBeDisabled();
+    expect(screen.getAllByRole("spinbutton")[0]).toBeDisabled();
   });
 });

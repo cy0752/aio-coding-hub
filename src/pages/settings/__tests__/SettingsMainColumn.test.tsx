@@ -65,6 +65,9 @@ function renderSettingsMainColumn(
     gateway: { running: false, port: null, base_url: null, listen_addr: null } as any,
     gatewayAvailable: "available",
     settingsReady: true,
+    settingsReadErrorMessage: null,
+    settingsWriteBlocked: false,
+    settingsSaving: false,
     port: 37123,
     setPort: vi.fn(),
     showHomeHeatmap: true,
@@ -147,6 +150,51 @@ describe("pages/settings/SettingsMainColumn", () => {
     fireEvent.click(within(row as HTMLElement).getByRole("switch"));
     expect(setShowHomeHeatmap).toHaveBeenCalledWith(false);
     expect(requestPersist).toHaveBeenCalledWith({ show_home_heatmap: false });
+  });
+
+  it("shows readonly protection and disables config writes after settings read failure", () => {
+    vi.mocked(useTheme).mockReturnValue({
+      theme: "system",
+      resolvedTheme: "light",
+      setTheme: vi.fn(),
+    } as any);
+
+    renderSettingsMainColumn({
+      gateway: { running: true, port: 37123, base_url: null, listen_addr: null } as any,
+      settingsReadErrorMessage:
+        "设置文件读取失败，已进入只读保护。请先修复或恢复 settings.json 后刷新页面。",
+      settingsWriteBlocked: true,
+      autoStart: true,
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent("已进入只读保护");
+    expect(screen.getByRole("button", { name: "重启" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "停止" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "最近30天" })).toBeDisabled();
+
+    const portRow = screen.getByText("监听端口").parentElement?.parentElement;
+    expect(portRow).toBeTruthy();
+    expect(within(portRow as HTMLElement).getByRole("spinbutton")).toBeDisabled();
+
+    const trayRow = screen.getByText("托盘常驻").parentElement?.parentElement;
+    expect(trayRow).toBeTruthy();
+    expect(within(trayRow as HTMLElement).getByRole("switch")).toBeDisabled();
+  });
+
+  it("disables gateway controls while settings save is in flight", () => {
+    vi.mocked(useTheme).mockReturnValue({
+      theme: "system",
+      resolvedTheme: "light",
+      setTheme: vi.fn(),
+    } as any);
+
+    renderSettingsMainColumn({
+      gateway: { running: true, port: 37123, base_url: null, listen_addr: null } as any,
+      settingsSaving: true,
+    });
+
+    expect(screen.getByRole("button", { name: "重启" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "停止" })).toBeDisabled();
   });
 
   it("toggles homepage usage visibility setting", () => {

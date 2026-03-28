@@ -17,6 +17,8 @@ export type CliManagerAvailability = "checking" | "available" | "unavailable";
 
 export type CliManagerGeneralTabProps = {
   rectifierAvailable: CliManagerAvailability;
+  settingsReadErrorMessage: string | null;
+  settingsWriteBlocked: boolean;
   rectifierSaving: boolean;
   rectifier: GatewayRectifierSettingsPatch;
   onPersistRectifier: (patch: Partial<GatewayRectifierSettingsPatch>) => Promise<void> | void;
@@ -66,6 +68,8 @@ export type CliManagerGeneralTabProps = {
 
 export function CliManagerGeneralTab({
   rectifierAvailable,
+  settingsReadErrorMessage,
+  settingsWriteBlocked,
   rectifierSaving,
   rectifier,
   onPersistRectifier,
@@ -104,6 +108,20 @@ export function CliManagerGeneralTab({
   blurOnEnter,
 }: CliManagerGeneralTabProps) {
   const navigate = useNavigate();
+  const settingsUnavailable = rectifierAvailable !== "available";
+  const rectifierDisabled = rectifierSaving || settingsUnavailable || settingsWriteBlocked;
+  const circuitNoticeDisabled =
+    circuitBreakerNoticeSaving || settingsUnavailable || settingsWriteBlocked;
+  const codexCompletionDisabled =
+    codexSessionIdCompletionSaving || settingsUnavailable || settingsWriteBlocked;
+  const taskNotifyDisabled =
+    taskCompleteNotifySaving || settingsUnavailable || settingsWriteBlocked;
+  const notificationSoundDisabled =
+    notificationSoundSaving || settingsUnavailable || settingsWriteBlocked;
+  const cacheMonitorDisabled =
+    cacheAnomalyMonitorSaving || settingsUnavailable || settingsWriteBlocked;
+  const commonSettingsDisabled =
+    commonSettingsSaving || settingsUnavailable || settingsWriteBlocked;
 
   return (
     <div className="space-y-6">
@@ -114,6 +132,12 @@ export function CliManagerGeneralTab({
             网关整流、通知、超时与熔断策略。
           </p>
         </div>
+
+        {settingsReadErrorMessage ? (
+          <div className="border-b border-amber-200 bg-amber-50 px-6 py-4 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+            {settingsReadErrorMessage}
+          </div>
+        ) : null}
 
         {rectifierAvailable === "unavailable" ? (
           <div className="text-sm text-slate-600 dark:text-slate-400 text-center py-8">
@@ -133,7 +157,7 @@ export function CliManagerGeneralTab({
                     onCheckedChange={(checked) =>
                       void onPersistRectifier({ verbose_provider_error: checked })
                     }
-                    disabled={rectifierSaving || rectifierAvailable !== "available"}
+                    disabled={rectifierDisabled}
                   />
                 </SettingsRow>
                 <SettingsRow
@@ -145,7 +169,7 @@ export function CliManagerGeneralTab({
                     onCheckedChange={(checked) =>
                       void onPersistRectifier({ intercept_anthropic_warmup_requests: checked })
                     }
-                    disabled={rectifierSaving || rectifierAvailable !== "available"}
+                    disabled={rectifierDisabled}
                   />
                 </SettingsRow>
                 <SettingsRow
@@ -157,7 +181,7 @@ export function CliManagerGeneralTab({
                     onCheckedChange={(checked) =>
                       void onPersistRectifier({ enable_thinking_signature_rectifier: checked })
                     }
-                    disabled={rectifierSaving || rectifierAvailable !== "available"}
+                    disabled={rectifierDisabled}
                   />
                 </SettingsRow>
                 <SettingsRow
@@ -169,7 +193,7 @@ export function CliManagerGeneralTab({
                     onCheckedChange={(checked) =>
                       void onPersistRectifier({ enable_thinking_budget_rectifier: checked })
                     }
-                    disabled={rectifierSaving || rectifierAvailable !== "available"}
+                    disabled={rectifierDisabled}
                   />
                 </SettingsRow>
                 <SettingsRow
@@ -183,7 +207,7 @@ export function CliManagerGeneralTab({
                         enable_claude_metadata_user_id_injection: checked,
                       })
                     }
-                    disabled={rectifierSaving || rectifierAvailable !== "available"}
+                    disabled={rectifierDisabled}
                   />
                 </SettingsRow>
                 <SettingsRow
@@ -195,7 +219,7 @@ export function CliManagerGeneralTab({
                     onCheckedChange={(checked) =>
                       void onPersistRectifier({ enable_response_fixer: checked })
                     }
-                    disabled={rectifierSaving || rectifierAvailable !== "available"}
+                    disabled={rectifierDisabled}
                   />
                 </SettingsRow>
                 {rectifier.enable_response_fixer && (
@@ -206,7 +230,7 @@ export function CliManagerGeneralTab({
                         onCheckedChange={(checked) =>
                           void onPersistRectifier({ response_fixer_fix_encoding: checked })
                         }
-                        disabled={rectifierSaving || rectifierAvailable !== "available"}
+                        disabled={rectifierDisabled}
                       />
                     </SettingsRow>
                     <SettingsRow label="修复 SSE 格式" className="pl-6">
@@ -215,7 +239,7 @@ export function CliManagerGeneralTab({
                         onCheckedChange={(checked) =>
                           void onPersistRectifier({ response_fixer_fix_sse_format: checked })
                         }
-                        disabled={rectifierSaving || rectifierAvailable !== "available"}
+                        disabled={rectifierDisabled}
                       />
                     </SettingsRow>
                     <SettingsRow label="修复截断的 JSON" className="pl-6">
@@ -224,7 +248,7 @@ export function CliManagerGeneralTab({
                         onCheckedChange={(checked) =>
                           void onPersistRectifier({ response_fixer_fix_truncated_json: checked })
                         }
-                        disabled={rectifierSaving || rectifierAvailable !== "available"}
+                        disabled={rectifierDisabled}
                       />
                     </SettingsRow>
                   </>
@@ -236,7 +260,7 @@ export function CliManagerGeneralTab({
                   <Switch
                     checked={codexSessionIdCompletionEnabled}
                     onCheckedChange={(checked) => void onPersistCodexSessionIdCompletion(checked)}
-                    disabled={codexSessionIdCompletionSaving || rectifierAvailable !== "available"}
+                    disabled={codexCompletionDisabled}
                   />
                 </SettingsRow>
               </div>
@@ -261,14 +285,14 @@ export function CliManagerGeneralTab({
                   <Switch
                     checked={taskCompleteNotifyEnabled}
                     onCheckedChange={(checked) => void onPersistTaskCompleteNotify(checked)}
-                    disabled={taskCompleteNotifySaving || rectifierAvailable !== "available"}
+                    disabled={taskNotifyDisabled}
                   />
                 </SettingsRow>
                 <SettingsRow label="熔断通知" subtitle="当服务熔断触发或恢复时，主动发送系统通知。">
                   <Switch
                     checked={circuitBreakerNoticeEnabled}
                     onCheckedChange={(checked) => void onPersistCircuitBreakerNotice(checked)}
-                    disabled={circuitBreakerNoticeSaving || rectifierAvailable !== "available"}
+                    disabled={circuitNoticeDisabled}
                   />
                 </SettingsRow>
                 <SettingsRow
@@ -278,7 +302,7 @@ export function CliManagerGeneralTab({
                   <Switch
                     checked={notificationSoundEnabled}
                     onCheckedChange={(checked) => void onPersistNotificationSound(checked)}
-                    disabled={notificationSoundSaving || rectifierAvailable !== "available"}
+                    disabled={notificationSoundDisabled}
                   />
                 </SettingsRow>
               </div>
@@ -300,7 +324,7 @@ export function CliManagerGeneralTab({
                   <Switch
                     checked={cacheAnomalyMonitorEnabled}
                     onCheckedChange={(checked) => void onPersistCacheAnomalyMonitor(checked)}
-                    disabled={cacheAnomalyMonitorSaving || rectifierAvailable !== "available"}
+                    disabled={cacheMonitorDisabled}
                   />
                 </SettingsRow>
               </div>
@@ -338,7 +362,7 @@ export function CliManagerGeneralTab({
                           enable_cli_proxy_startup_recovery: checked,
                         })
                       }
-                      disabled={commonSettingsSaving || rectifierAvailable !== "available"}
+                      disabled={commonSettingsDisabled}
                     />
                   </SettingsRow>
                 </div>
@@ -349,13 +373,13 @@ export function CliManagerGeneralTab({
               <>
                 <NetworkSettingsCard
                   available={rectifierAvailable === "available"}
-                  saving={commonSettingsSaving}
+                  saving={commonSettingsDisabled}
                   settings={appSettings}
                   onPersistSettings={onPersistCommonSettings}
                 />
                 <WslSettingsCard
                   available={rectifierAvailable === "available"}
-                  saving={commonSettingsSaving}
+                  saving={commonSettingsDisabled}
                   settings={appSettings}
                 />
               </>
@@ -398,7 +422,7 @@ export function CliManagerGeneralTab({
                       style={{ width: "5rem" }}
                       min={0}
                       max={3600}
-                      disabled={commonSettingsSaving || rectifierAvailable !== "available"}
+                      disabled={commonSettingsDisabled}
                     />
                     <span className="w-8 text-sm text-slate-500 dark:text-slate-400">秒</span>
                   </div>
@@ -434,7 +458,7 @@ export function CliManagerGeneralTab({
                       style={{ width: "5rem" }}
                       min={0}
                       max={3600}
-                      disabled={commonSettingsSaving || rectifierAvailable !== "available"}
+                      disabled={commonSettingsDisabled}
                     />
                     <span className="w-8 text-sm text-slate-500 dark:text-slate-400">秒</span>
                   </div>
@@ -468,7 +492,7 @@ export function CliManagerGeneralTab({
                       style={{ width: "5rem" }}
                       min={0}
                       max={86400}
-                      disabled={commonSettingsSaving || rectifierAvailable !== "available"}
+                      disabled={commonSettingsDisabled}
                     />
                     <span className="w-8 text-sm text-slate-500 dark:text-slate-400">秒</span>
                   </div>
@@ -508,7 +532,7 @@ export function CliManagerGeneralTab({
                       style={{ width: "5rem" }}
                       min={0}
                       max={3600}
-                      disabled={commonSettingsSaving || rectifierAvailable !== "available"}
+                      disabled={commonSettingsDisabled}
                     />
                     <span className="w-8 text-sm text-slate-500 dark:text-slate-400">秒</span>
                   </div>
@@ -544,7 +568,7 @@ export function CliManagerGeneralTab({
                       style={{ width: "5rem" }}
                       min={1}
                       max={3600}
-                      disabled={commonSettingsSaving || rectifierAvailable !== "available"}
+                      disabled={commonSettingsDisabled}
                     />
                     <span className="w-8 text-sm text-slate-500 dark:text-slate-400">秒</span>
                   </div>
@@ -575,7 +599,7 @@ export function CliManagerGeneralTab({
                       style={{ width: "5rem" }}
                       min={1}
                       max={50}
-                      disabled={commonSettingsSaving || rectifierAvailable !== "available"}
+                      disabled={commonSettingsDisabled}
                     />
                     <span className="w-8 text-sm text-slate-500 dark:text-slate-400">次</span>
                   </div>
@@ -608,7 +632,7 @@ export function CliManagerGeneralTab({
                       style={{ width: "5rem" }}
                       min={1}
                       max={1440}
-                      disabled={commonSettingsSaving || rectifierAvailable !== "available"}
+                      disabled={commonSettingsDisabled}
                     />
                     <span className="w-8 text-sm text-slate-500 dark:text-slate-400">分钟</span>
                   </div>

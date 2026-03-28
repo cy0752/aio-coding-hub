@@ -121,16 +121,25 @@ pub fn run() {
                 // Port conflicts are handled by the gateway's bind-first-available strategy.
                 let settings = match blocking::run("startup_read_settings", {
                     let app_handle = app_handle.clone();
-                    move || -> crate::shared::error::AppResult<settings::AppSettings> {
-                        Ok(settings::read(&app_handle).unwrap_or_default())
-                    }
+                    move || settings::read(&app_handle)
                 })
                 .await
                 {
                     Ok(cfg) => cfg,
                     Err(err) => {
-                        tracing::warn!("settings read failed, using defaults: {}", err);
-                        settings::AppSettings::default()
+                        tracing::error!(
+                            "startup settings read failed; skipping settings-dependent startup tasks: {}",
+                            err
+                        );
+                        crate::app::cleanup::restore_cli_proxy_keep_state_best_effort(
+                            &app_handle,
+                            "startup_cli_proxy_restore_on_settings_read_failed",
+                            "startup_settings_read_failed",
+                            false,
+                        )
+                        .await;
+                        resident::show_main_window(&app_handle);
+                        return;
                     }
                 };
 

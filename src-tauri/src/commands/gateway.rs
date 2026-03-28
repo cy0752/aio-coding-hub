@@ -42,15 +42,27 @@ pub(crate) fn gateway_status(state: tauri::State<'_, GatewayState>) -> gateway::
 }
 
 #[tauri::command]
-pub(crate) async fn gateway_check_port_available(app: tauri::AppHandle, port: u16) -> bool {
+pub(crate) async fn gateway_check_port_available(
+    app: tauri::AppHandle,
+    port: u16,
+) -> Result<bool, String> {
+    gateway_check_port_available_impl(app, port)
+        .await
+        .map_err(Into::into)
+}
+
+pub(crate) async fn gateway_check_port_available_impl<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    port: u16,
+) -> crate::shared::error::AppResult<bool> {
     if port < 1024 {
-        return false;
+        return Ok(false);
     }
 
     blocking::run(
         "gateway_check_port_available",
         move || -> crate::shared::error::AppResult<bool> {
-            let cfg = settings::read(&app).unwrap_or_default();
+            let cfg = settings::read(&app)?;
             let host = match cfg.gateway_listen_mode {
                 settings::GatewayListenMode::Localhost => "127.0.0.1".to_string(),
                 settings::GatewayListenMode::Lan => "0.0.0.0".to_string(),
@@ -68,7 +80,6 @@ pub(crate) async fn gateway_check_port_available(app: tauri::AppHandle, port: u1
         },
     )
     .await
-    .unwrap_or(false)
 }
 
 #[tauri::command]

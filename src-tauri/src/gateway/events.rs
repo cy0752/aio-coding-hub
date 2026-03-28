@@ -285,10 +285,13 @@ pub(super) fn emit_circuit_transition(
 
     emit_circuit_event(app, payload);
 
-    let enable_notice = settings::read(app)
-        .ok()
-        .map(|cfg| cfg.enable_circuit_breaker_notice)
-        .unwrap_or(false);
+    let enable_notice = match settings::read(app) {
+        Ok(cfg) => cfg.enable_circuit_breaker_notice,
+        Err(err) => {
+            tracing::warn!("skip circuit notice because settings read failed: {err}");
+            return;
+        }
+    };
     if !enable_notice {
         return;
     }

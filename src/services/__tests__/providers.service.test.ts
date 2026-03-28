@@ -14,8 +14,23 @@ import {
   providersReorder,
   providerUpsert,
 } from "../providers";
+import { commands } from "../../generated/bindings";
 import { logToConsole } from "../consoleLog";
 import { invokeTauriOrNull } from "../tauriInvoke";
+
+vi.mock("../../generated/bindings", async () => {
+  const actual = await vi.importActual<typeof import("../../generated/bindings")>(
+    "../../generated/bindings"
+  );
+  return {
+    ...actual,
+    commands: {
+      ...actual.commands,
+      providersList: vi.fn(),
+      providerUpsert: vi.fn(),
+    },
+  };
+});
 
 vi.mock("../tauriInvoke", async () => {
   const actual = await vi.importActual<typeof import("../tauriInvoke")>("../tauriInvoke");
@@ -35,7 +50,7 @@ vi.mock("../consoleLog", async () => {
 
 describe("services/providers", () => {
   it("rethrows and logs when invoke fails", async () => {
-    vi.mocked(invokeTauriOrNull).mockRejectedValueOnce(new Error("providers boom"));
+    vi.mocked(commands.providersList).mockRejectedValueOnce(new Error("providers boom"));
 
     await expect(providersList("claude")).rejects.toThrow("providers boom");
     expect(logToConsole).toHaveBeenCalledWith(
@@ -49,13 +64,16 @@ describe("services/providers", () => {
   });
 
   it("treats null invoke result as error when runtime exists", async () => {
-    vi.mocked(invokeTauriOrNull).mockResolvedValueOnce(null);
+    vi.mocked(commands.providersList).mockResolvedValueOnce({ status: "ok", data: null as any });
 
     await expect(providersList("claude")).rejects.toThrow("IPC_NULL_RESULT: providers_list");
   });
 
   it("builds provider_upsert args as before", async () => {
-    vi.mocked(invokeTauriOrNull).mockResolvedValueOnce({ id: 1, cli_key: "claude" } as any);
+    vi.mocked(commands.providerUpsert).mockResolvedValueOnce({
+      status: "ok",
+      data: { id: 1, cli_key: "claude" } as any,
+    });
 
     await providerUpsert({
       provider_id: null,
@@ -77,24 +95,62 @@ describe("services/providers", () => {
       limit_total_usd: null,
     });
 
-    expect(invokeTauriOrNull).toHaveBeenCalledWith(
-      "provider_upsert",
+    expect(commands.providerUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        input: expect.objectContaining({
-          providerId: null,
-          cliKey: "claude",
-          name: "P1",
-          baseUrlMode: "order",
-          limit5hUsd: null,
-          dailyResetMode: "fixed",
-        }),
+        providerId: null,
+        cliKey: "claude",
+        name: "P1",
+        baseUrlMode: "order",
+        limit5hUsd: null,
+        dailyResetMode: "fixed",
+      })
+    );
+  });
+
+  it("redacts provider secrets before logging save failures", async () => {
+    vi.mocked(commands.providerUpsert).mockRejectedValueOnce(new Error("save failed"));
+
+    await expect(
+      providerUpsert({
+        provider_id: null,
+        cli_key: "claude",
+        name: "P1",
+        base_urls: ["https://example.com"],
+        base_url_mode: "order",
+        auth_mode: "api_key",
+        api_key: "sk-test-secret",
+        enabled: true,
+        cost_multiplier: 1,
+        priority: null,
+        claude_models: null,
+        limit_5h_usd: null,
+        limit_daily_usd: null,
+        daily_reset_mode: "fixed",
+        daily_reset_time: "00:00:00",
+        limit_weekly_usd: null,
+        limit_monthly_usd: null,
+        limit_total_usd: null,
+      })
+    ).rejects.toThrow("save failed");
+
+    expect(logToConsole).toHaveBeenCalledWith(
+      "error",
+      "保存供应商失败",
+      expect.objectContaining({
+        cmd: "provider_upsert",
+        args: {
+          input: expect.objectContaining({
+            apiKey: "[REDACTED]",
+            name: "P1",
+          }),
+        },
       })
     );
   });
 
   it("passes providers command args with stable contract fields", async () => {
+    vi.mocked(commands.providersList).mockResolvedValueOnce({ status: "ok", data: [] as any });
     vi.mocked(invokeTauriOrNull)
-      .mockResolvedValueOnce([] as any)
       .mockResolvedValueOnce(120 as any)
       .mockResolvedValueOnce({ id: 1 } as any)
       .mockResolvedValueOnce({ id: 1 } as any)
@@ -109,9 +165,7 @@ describe("services/providers", () => {
     await providersReorder("claude", [2, 1]);
     await providerClaudeTerminalLaunchCommand(5);
 
-    expect(invokeTauriOrNull).toHaveBeenCalledWith("providers_list", {
-      cliKey: "claude",
-    });
+    expect(commands.providersList).toHaveBeenCalledWith("claude");
     expect(invokeTauriOrNull).toHaveBeenCalledWith("base_url_ping_ms", {
       baseUrl: "https://api.example.com",
     });

@@ -110,9 +110,7 @@ pub(crate) async fn wsl_configure_clients(
 
     let cfg = blocking::run("wsl_configure_clients_read_settings", {
         let app = app.clone();
-        move || -> crate::shared::error::AppResult<settings::AppSettings> {
-            Ok(settings::read(&app).unwrap_or_default())
-        }
+        move || settings::read(&app)
     })
     .await?;
 
@@ -208,9 +206,7 @@ pub(crate) async fn wsl_auto_sync_core(app: &tauri::AppHandle) -> Result<(), Str
     // 1. Read settings and check preconditions
     let cfg = blocking::run("wsl_core_read_settings", {
         let app = app.clone();
-        move || -> crate::shared::error::AppResult<settings::AppSettings> {
-            Ok(settings::read(&app).unwrap_or_default())
-        }
+        move || settings::read(&app)
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -406,9 +402,7 @@ async fn do_wsl_auto_configure(
     // Read current settings to resolve host address
     let cfg = blocking::run("wsl_startup_read_cfg", {
         let app = app.clone();
-        move || -> crate::shared::error::AppResult<settings::AppSettings> {
-            Ok(settings::read(&app).unwrap_or_default())
-        }
+        move || settings::read(&app)
     })
     .await
     .map_err(|e| e.to_string())?;

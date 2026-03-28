@@ -65,6 +65,9 @@ describe("pages/settings/SettingsPage", () => {
 
     vi.mocked(useSettingsPersistence).mockReturnValue({
       settingsReady: true,
+      settingsReadErrorMessage: null,
+      settingsWriteBlocked: false,
+      settingsSaving: false,
       port: "1234",
       setPort: vi.fn(),
       showHomeHeatmap: true,
@@ -100,6 +103,7 @@ describe("pages/settings/SettingsPage", () => {
     expect(screen.getByTestId("settings-sidebar")).toBeInTheDocument();
 
     expect(lastMainColumnProps?.gatewayAvailable).toBe(true);
+    expect(lastMainColumnProps?.settingsWriteBlocked).toBe(false);
     expect(lastSidebarProps?.updateMeta).toBeTruthy();
   });
 });

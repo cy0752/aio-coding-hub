@@ -29,6 +29,8 @@ import {
   useNotificationSoundEnabled,
 } from "../services/notificationSound";
 import {
+  getSettingsReadProtection,
+  SETTINGS_READONLY_MESSAGE,
   useSettingsCircuitBreakerNoticeSetMutation,
   useSettingsCodexSessionIdCompletionSetMutation,
   useSettingsGatewayRectifierSetMutation,
@@ -101,6 +103,8 @@ export function CliManagerPage() {
 
   const settingsQuery = useSettingsQuery();
   const appSettings = settingsQuery.data ?? null;
+  const { settingsReadErrorMessage, settingsWriteBlocked } =
+    getSettingsReadProtection(settingsQuery);
 
   const rectifierAvailable: "checking" | "available" | "unavailable" = settingsQuery.isLoading
     ? "checking"
@@ -135,6 +139,10 @@ export function CliManagerPage() {
   const [circuitBreakerFailureThreshold, setCircuitBreakerFailureThreshold] = useState<number>(5);
   const [circuitBreakerOpenDurationMinutes, setCircuitBreakerOpenDurationMinutes] =
     useState<number>(30);
+
+  function blockSettingsWrite() {
+    toast(settingsReadErrorMessage ?? SETTINGS_READONLY_MESSAGE);
+  }
 
   const claudeInfoQuery = useCliManagerClaudeInfoQuery({ enabled: tab === "claude" });
   const claudeSettingsQuery = useCliManagerClaudeSettingsQuery({ enabled: tab === "claude" });
@@ -212,6 +220,10 @@ export function CliManagerPage() {
   }, [appSettings]);
 
   async function persistRectifier(patch: Partial<GatewayRectifierSettingsPatch>) {
+    if (settingsWriteBlocked) {
+      blockSettingsWrite();
+      return;
+    }
     if (rectifierSaving) return;
     if (rectifierAvailable !== "available") return;
 
@@ -246,6 +258,10 @@ export function CliManagerPage() {
   }
 
   async function persistCircuitBreakerNotice(enable: boolean) {
+    if (settingsWriteBlocked) {
+      blockSettingsWrite();
+      return;
+    }
     if (circuitBreakerNoticeSaving) return;
     if (rectifierAvailable !== "available") return;
 
@@ -268,6 +284,10 @@ export function CliManagerPage() {
   }
 
   async function persistCodexSessionIdCompletion(enable: boolean) {
+    if (settingsWriteBlocked) {
+      blockSettingsWrite();
+      return;
+    }
     if (codexSessionIdCompletionSaving) return;
     if (rectifierAvailable !== "available") return;
 
@@ -290,6 +310,10 @@ export function CliManagerPage() {
   }
 
   async function persistCacheAnomalyMonitor(enable: boolean) {
+    if (settingsWriteBlocked) {
+      blockSettingsWrite();
+      return;
+    }
     if (commonSettingsSaving) return;
     if (rectifierAvailable !== "available") return;
 
@@ -311,6 +335,10 @@ export function CliManagerPage() {
   }
 
   async function persistTaskCompleteNotify(enable: boolean) {
+    if (settingsWriteBlocked) {
+      blockSettingsWrite();
+      return;
+    }
     if (commonSettingsSaving) return;
     if (rectifierAvailable !== "available") return;
 
@@ -332,6 +360,10 @@ export function CliManagerPage() {
   }
 
   async function persistNotificationSound(enable: boolean) {
+    if (settingsWriteBlocked) {
+      blockSettingsWrite();
+      return;
+    }
     if (commonSettingsSaving) return;
     if (rectifierAvailable !== "available") return;
 
@@ -353,6 +385,10 @@ export function CliManagerPage() {
   }
 
   async function persistCommonSettings(patch: Partial<AppSettings>): Promise<AppSettings | null> {
+    if (settingsWriteBlocked) {
+      blockSettingsWrite();
+      return null;
+    }
     if (commonSettingsSaving) return null;
     if (rectifierAvailable !== "available") return null;
     if (!appSettings) return null;
@@ -630,6 +666,8 @@ export function CliManagerPage() {
         {tab === "general" ? (
           <CliManagerGeneralTab
             rectifierAvailable={rectifierAvailable}
+            settingsReadErrorMessage={settingsReadErrorMessage}
+            settingsWriteBlocked={settingsWriteBlocked}
             rectifierSaving={rectifierSaving}
             rectifier={rectifier}
             onPersistRectifier={persistRectifier}
@@ -640,16 +678,16 @@ export function CliManagerPage() {
             codexSessionIdCompletionSaving={codexSessionIdCompletionSaving}
             onPersistCodexSessionIdCompletion={persistCodexSessionIdCompletion}
             cacheAnomalyMonitorEnabled={cacheAnomalyMonitorEnabled}
-            cacheAnomalyMonitorSaving={commonSettingsSaving}
+            cacheAnomalyMonitorSaving={commonSettingsSaving || settingsWriteBlocked}
             onPersistCacheAnomalyMonitor={persistCacheAnomalyMonitor}
             taskCompleteNotifyEnabled={taskCompleteNotifyEnabled}
-            taskCompleteNotifySaving={commonSettingsSaving}
+            taskCompleteNotifySaving={commonSettingsSaving || settingsWriteBlocked}
             onPersistTaskCompleteNotify={persistTaskCompleteNotify}
             notificationSoundEnabled={notificationSoundEnabled}
-            notificationSoundSaving={commonSettingsSaving}
+            notificationSoundSaving={commonSettingsSaving || settingsWriteBlocked}
             onPersistNotificationSound={persistNotificationSound}
             appSettings={appSettings}
-            commonSettingsSaving={commonSettingsSaving}
+            commonSettingsSaving={commonSettingsSaving || settingsWriteBlocked}
             onPersistCommonSettings={persistCommonSettings}
             upstreamFirstByteTimeoutSeconds={upstreamFirstByteTimeoutSeconds}
             setUpstreamFirstByteTimeoutSeconds={setUpstreamFirstByteTimeoutSeconds}
@@ -700,7 +738,7 @@ export function CliManagerPage() {
               codexConfig={codexConfig}
               codexConfigToml={codexConfigToml}
               appSettings={appSettings}
-              codexHomeSettingsSaving={commonSettingsSaving}
+              codexHomeSettingsSaving={commonSettingsSaving || settingsWriteBlocked}
               refreshCodex={refreshCodex}
               openCodexConfigDir={openCodexConfigDir}
               persistCodexConfig={persistCodexConfig}

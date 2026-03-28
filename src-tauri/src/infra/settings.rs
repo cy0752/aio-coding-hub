@@ -825,12 +825,15 @@ fn legacy_settings_path<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> AppResu
     Ok(config_dir.join(LEGACY_IDENTIFIER).join("settings.json"))
 }
 
+fn invalid_settings_json(reason: impl std::fmt::Display) -> crate::shared::error::AppError {
+    format!("SEC_INVALID_INPUT: invalid settings.json: {reason}").into()
+}
+
 fn parse_settings_json(content: &str) -> AppResult<(AppSettings, bool, serde_json::Value)> {
-    let raw: serde_json::Value =
-        serde_json::from_str(content).map_err(|e| format!("failed to parse settings.json: {e}"))?;
+    let raw: serde_json::Value = serde_json::from_str(content).map_err(invalid_settings_json)?;
     let schema_version_present = raw.get("schema_version").is_some();
-    let settings: AppSettings = serde_json::from_value(raw.clone())
-        .map_err(|e| format!("failed to parse settings.json: {e}"))?;
+    let settings: AppSettings =
+        serde_json::from_value(raw.clone()).map_err(invalid_settings_json)?;
     Ok((settings, schema_version_present, raw))
 }
 

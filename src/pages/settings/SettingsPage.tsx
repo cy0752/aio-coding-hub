@@ -25,6 +25,9 @@ export function SettingsPage() {
             gateway={gateway}
             gatewayAvailable={gatewayAvailable}
             settingsReady={persistence.settingsReady}
+            settingsReadErrorMessage={persistence.settingsReadErrorMessage}
+            settingsWriteBlocked={persistence.settingsWriteBlocked}
+            settingsSaving={persistence.settingsSaving}
             port={persistence.port}
             setPort={persistence.setPort}
             showHomeHeatmap={persistence.showHomeHeatmap}

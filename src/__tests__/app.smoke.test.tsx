@@ -60,7 +60,7 @@ describe("App (smoke)", () => {
     mockLogToConsole.mockReset();
     vi.mocked(listenGatewayEvents).mockResolvedValue(() => {});
     vi.mocked(listenNoticeEvents).mockResolvedValue(() => {});
-    vi.mocked(settingsGet).mockResolvedValue(null);
+    vi.mocked(settingsGet).mockResolvedValue(null as any);
   });
 
   afterEach(() => {

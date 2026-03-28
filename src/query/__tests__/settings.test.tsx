@@ -9,6 +9,8 @@ import { createQueryWrapper, createTestQueryClient } from "../../test/utils/reac
 import { setTauriRuntime } from "../../test/utils/tauriRuntime";
 import { settingsKeys } from "../keys";
 import {
+  getSettingsReadProtection,
+  SETTINGS_READONLY_MESSAGE,
   useSettingsCircuitBreakerNoticeSetMutation,
   useSettingsCodexSessionIdCompletionSetMutation,
   useSettingsGatewayRectifierSetMutation,
@@ -41,6 +43,30 @@ vi.mock("../../services/settingsCodexSessionIdCompletion", async () => {
 });
 
 describe("query/settings", () => {
+  it("getSettingsReadProtection blocks writes when there is no data and query errored", () => {
+    expect(
+      getSettingsReadProtection({
+        data: null,
+        isError: true,
+      })
+    ).toEqual({
+      settingsReadErrorMessage: SETTINGS_READONLY_MESSAGE,
+      settingsWriteBlocked: true,
+    });
+  });
+
+  it("getSettingsReadProtection blocks writes when refetch falls back to stale data", () => {
+    expect(
+      getSettingsReadProtection({
+        data: createTestAppSettings(),
+        isError: true,
+      })
+    ).toEqual({
+      settingsReadErrorMessage: SETTINGS_READONLY_MESSAGE,
+      settingsWriteBlocked: true,
+    });
+  });
+
   it("useSettingsQuery respects enabled=false", () => {
     setTauriRuntime();
     vi.mocked(settingsGet).mockClear();

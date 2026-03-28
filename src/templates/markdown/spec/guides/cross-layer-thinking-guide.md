@@ -74,6 +74,13 @@ Use this checklist whenever a Tauri command is added or changed.
 - Generated bindings only protect the commands and types they actually export.
   If Specta covers only a subset, document that boundary explicitly and keep
   service-layer contract tests for the remaining commands.
+- Treat generated bindings as authoritative only when runtime code actually
+  imports them or a generated wrapper sits directly under the service layer.
+  Raw-file snapshot tests alone do not prevent handwritten runtime wrappers from
+  drifting away from the exported contract.
+- If a command intentionally stays outside Specta, keep one explicit owner file
+  for the handwritten DTO on the frontend and add a targeted contract test that
+  names the Rust command and the JS wrapper together.
 
 ---
 
@@ -145,7 +152,44 @@ while only a few commands are actually exported through Specta.
 **Good**: Make it explicit which commands are protected by generated bindings and
 which still rely on handwritten service wrappers plus targeted tests.
 
-### Mistake 7: Letting Event Names Bypass the Shared Contract
+### Mistake 7: Fail-Open Settings Merges
+
+**Bad**: If persisted settings cannot be read, silently fall back to defaults,
+merge the next write against those defaults, and overwrite the user's original
+config without an explicit recovery step.
+
+**Good**: Treat unreadable persisted config as a blocking state for save flows,
+or route through a visible recovery/import-reset path before writing anything
+back to disk.
+
+Config write checklist:
+- Decide whether read failure should block writes, offer reset, or restore from
+  backup. Do not let `unwrap_or_default()` make that choice implicitly.
+- Log the failure with enough context to diagnose file corruption or migration
+  drift.
+- Add one test that proves a read failure does not silently erase unrelated
+  fields on the next save.
+
+### Mistake 8: Letting Composition Roots Become Feature Hosts
+
+**Bad**: Keep Tauri plugin wiring, startup recovery, gateway auto-start, WSL
+bootstrapping, cleanup, and large command registration inside one root file or
+one React bootstrap hook until every cross-layer change touches the same place.
+
+**Good**: Keep roots composition-only. Once startup logic grows beyond one
+feature area, split into dedicated registrars such as `command_registry`,
+`startup/bootstrap`, or `platform_init` modules and let the root only compose
+them.
+
+Root-boundary checklist:
+- If a root file owns app lifecycle plus feature logic plus platform branches,
+  extract feature-specific startup modules.
+- If the command registry grows, group command lists by feature and generate the
+  final handler from smaller registrars.
+- Review blast radius: adding one feature should not require editing unrelated
+  startup branches.
+
+### Mistake 9: Letting Event Names Bypass the Shared Contract
 
 **Bad**: Define a shared `gatewayEventNames` map, but still add raw
 `"gateway:*"` strings in feature modules.
@@ -153,7 +197,7 @@ which still rely on handwritten service wrappers plus targeted tests.
 **Good**: Subscribe through the shared event bus and central constants so
 event-name changes fail in one place instead of silently drifting.
 
-### Mistake 8: Letting Internal Helper Requests Leak Into User-Facing Observability
+### Mistake 10: Letting Internal Helper Requests Leak Into User-Facing Observability
 
 **Bad**: Treat internal helper traffic such as Claude
 `/v1/messages/count_tokens`, warmup probes, or bridge housekeeping as if it
@@ -176,6 +220,45 @@ Internal helper checklist:
 - If helper traffic must remain inspectable, expose it only through explicit
   diagnostics, not the default overview/log surfaces.
 
+### Mistake 11: Treating Additive Analytics Fields as "Safe Enough" to Skip Contract Updates
+
+**Bad**: Backend adds a new metrics field such as
+`cache_creation_1h_input_tokens`, but frontend service types, view models, and
+summary cards keep the old shape because the existing UI still renders.
+
+**Good**: Treat additive analytics fields as contract changes. Update the owning
+service type, query tests, and the first consumer surface in the same change.
+
+Analytics contract checklist:
+- If Rust adds or renames a serialized field, update the frontend service type
+  in the same PR.
+- If the field is intentionally backend-only, document that choice next to the
+  Rust DTO instead of relying on silent extra JSON fields.
+- Prefer one owning TypeScript type per IPC payload and derive page/view-model
+  types from it instead of re-declaring subsets.
+- Add at least one contract-focused test that fails when the new field is
+  missing from the frontend payload shape.
+
+### Mistake 12: Hardcoding Support Matrices Across TS, Rust, and SQLite
+
+**Bad**: A new CLI or workspace-scoped sync object requires edits to TypeScript
+union types, Rust string arrays, SQL columns like `enabled_claude`, and
+multiple page branches. The feature works only after a wide copy-paste sweep.
+
+**Good**: Keep the support matrix owned by one registry/descriptor model and let
+UI, validation, and persistence derive from it where possible.
+
+Extension-matrix checklist:
+- If adding one CLI key requires touching frontend constants, backend
+  validation, migration schema, and tests separately, stop and re-evaluate the
+  design before shipping.
+- Prefer data-driven enablement tables over one boolean column per CLI when the
+  set is expected to evolve.
+- Keep one authoritative definition for supported identities and generate or
+  derive secondary views from it.
+- When schema constraints force duplication, document every mirrored ownership
+  point in the same PR.
+
 ---
 
 ## Checklist for Cross-Layer Features
@@ -192,9 +275,18 @@ After implementation:
 - [ ] Verified error handling at each boundary
 - [ ] Checked data survives round-trip
 - [ ] Updated generated bindings or documented why not
+- [ ] Verified generated bindings are actually consumed where they are claimed
+      to be authoritative
+- [ ] Verified config read failures do not silently downgrade into
+      default-overwrite saves
 - [ ] Confirmed event names and error-code constants still come from the shared source
+- [ ] Confirmed additive analytics / observability fields are reflected in the
+      owning frontend payload type
+- [ ] Confirmed extension matrices (CLI keys, workspace sync scopes, enabled
+      flags) are still owned centrally instead of drifting across layers
 - [ ] Classified helper/probe routes as user-visible vs infra-only and verified
       logs, events, stats, and provider-health side effects match that choice
+- [ ] Reviewed root bootstrap / command registry blast radius after the change
 
 ---
 

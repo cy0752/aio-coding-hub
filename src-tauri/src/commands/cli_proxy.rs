@@ -41,10 +41,23 @@ pub(crate) async fn cli_proxy_set_enabled(
     cli_key: String,
     enabled: bool,
 ) -> Result<cli_proxy::CliProxyResult, String> {
+    if enabled {
+        cli_proxy_set_enabled_impl(app, db_state.inner(), cli_key, true).await
+    } else {
+        cli_proxy_set_disabled_impl(app, Some(db_state.inner()), cli_key).await
+    }
+}
+
+pub(crate) async fn cli_proxy_set_enabled_impl(
+    app: tauri::AppHandle,
+    db_state: &DbInitState,
+    cli_key: String,
+    enabled: bool,
+) -> Result<cli_proxy::CliProxyResult, String> {
     tracing::info!(cli_key = %cli_key, enabled = enabled, "cli proxy enabled state changing");
 
     let base_origin = if enabled {
-        let db = ensure_db_ready(app.clone(), db_state.inner()).await?;
+        let db = ensure_db_ready(app.clone(), db_state).await?;
 
         blocking::run("cli_proxy_set_enabled_ensure_gateway", {
             let app = app.clone();
@@ -55,7 +68,7 @@ pub(crate) async fn cli_proxy_set_enabled(
                 let status = if manager.status().running {
                     manager.status()
                 } else {
-                    let settings = settings::read(&app).unwrap_or_default();
+                    let settings = settings::read(&app)?;
                     let status = manager.start(&app, db, Some(settings.preferred_port))?;
                     let _ = app.emit(GATEWAY_STATUS_EVENT_NAME, status.clone());
                     status
@@ -71,14 +84,7 @@ pub(crate) async fn cli_proxy_set_enabled(
         })
         .await?
     } else {
-        blocking::run("cli_proxy_set_enabled_read_settings", {
-            let app = app.clone();
-            move || -> crate::shared::error::AppResult<String> {
-                let settings = settings::read(&app).unwrap_or_default();
-                Ok(format!("http://127.0.0.1:{}", settings.preferred_port))
-            }
-        })
-        .await?
+        format!("http://127.0.0.1:{}", settings::DEFAULT_GATEWAY_PORT)
     };
 
     let result = blocking::run("cli_proxy_set_enabled_apply", {
@@ -94,7 +100,67 @@ pub(crate) async fn cli_proxy_set_enabled(
     // Without this re-sync, MCP entries get lost during the backup/restore cycle.
     if let Ok(ref r) = result {
         if r.ok {
-            match ensure_db_ready(app.clone(), db_state.inner()).await {
+            match ensure_db_ready(app.clone(), db_state).await {
+                Ok(db) => {
+                    let sync_app = app.clone();
+                    let sync_cli_key = cli_key.clone();
+                    if let Err(err) = blocking::run("cli_proxy_mcp_resync", move || {
+                        let conn = db.open_connection()?;
+                        mcp::sync_one_cli(&sync_app, &conn, &sync_cli_key)
+                    })
+                    .await
+                    {
+                        tracing::warn!(cli_key = %cli_key, "mcp re-sync after proxy toggle failed: {err}");
+                    }
+                }
+                Err(err) => {
+                    tracing::warn!(cli_key = %cli_key, "mcp re-sync skipped, db unavailable: {err}");
+                }
+            }
+        }
+    }
+
+    match &result {
+        Ok(r) if !r.ok => {
+            tracing::warn!(
+                cli_key = %r.cli_key,
+                error_code = %r.error_code.as_deref().unwrap_or(""),
+                "cli proxy set_enabled failed: {}",
+                r.message
+            );
+        }
+        Err(err) => {
+            tracing::warn!("cli proxy set_enabled error: {}", err);
+        }
+        _ => {}
+    }
+
+    result
+}
+
+pub(crate) async fn cli_proxy_set_disabled_impl<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    db_state: Option<&DbInitState>,
+    cli_key: String,
+) -> Result<cli_proxy::CliProxyResult, String> {
+    tracing::info!(cli_key = %cli_key, enabled = false, "cli proxy enabled state changing");
+
+    let base_origin = format!("http://127.0.0.1:{}", settings::DEFAULT_GATEWAY_PORT);
+    let result = blocking::run("cli_proxy_set_enabled_apply", {
+        let app = app.clone();
+        let cli_key = cli_key.clone();
+        move || cli_proxy::set_enabled(&app, &cli_key, false, &base_origin)
+    })
+    .await
+    .map_err(Into::into);
+
+    if let Ok(ref r) = result {
+        if r.ok {
+            let db_result = match db_state {
+                Some(db_state) => ensure_db_ready(app.clone(), db_state).await,
+                None => crate::infra::db::init(&app).map_err(Into::into),
+            };
+            match db_result {
                 Ok(db) => {
                     let sync_app = app.clone();
                     let sync_cli_key = cli_key.clone();
@@ -164,7 +230,7 @@ pub(crate) async fn cli_proxy_rebind_codex_home(
                 }),
             )
         } else {
-            let settings = settings::read(&app).unwrap_or_default();
+            let settings = settings::read(&app)?;
             (
                 false,
                 format!("http://127.0.0.1:{}", settings.preferred_port),

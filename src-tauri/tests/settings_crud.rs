@@ -2,6 +2,16 @@ mod support;
 
 use support::{json_bool, json_i64};
 
+fn settings_command_update_json(preferred_port: u16) -> serde_json::Value {
+    serde_json::json!({
+        "preferredPort": preferred_port,
+        "autoStart": false,
+        "logRetentionDays": 7,
+        "failoverMaxAttemptsPerProvider": 5,
+        "failoverMaxProvidersToTry": 5
+    })
+}
+
 #[test]
 fn settings_read_defaults() {
     let app = support::TestApp::new();
@@ -117,4 +127,56 @@ fn settings_cache_does_not_leak_across_distinct_app_paths() {
             "settings cache should be scoped by settings.json path"
         );
     }
+}
+
+#[test]
+fn settings_set_blocks_when_settings_json_is_corrupted() {
+    let app = support::TestApp::new();
+    let handle = app.handle();
+
+    let app_data_dir =
+        aio_coding_hub_lib::test_support::app_data_dir(&handle).expect("app data dir");
+    std::fs::create_dir_all(&app_data_dir).expect("create app data dir");
+    let settings_path = app_data_dir.join("settings.json");
+    std::fs::write(&settings_path, "{invalid json").expect("write corrupted settings");
+
+    let err = aio_coding_hub_lib::test_support::settings_set_via_command_json(
+        &handle,
+        settings_command_update_json(38000),
+    )
+    .expect_err("settings_set should fail on corrupted settings.json");
+
+    let err_text = err.to_string();
+    assert!(
+        err_text.contains("SETTINGS_RECOVERY_REQUIRED"),
+        "unexpected error: {err_text}"
+    );
+    assert!(
+        err_text.contains("invalid settings.json"),
+        "unexpected error: {err_text}"
+    );
+
+    let content = std::fs::read_to_string(&settings_path).expect("read corrupted settings");
+    assert_eq!(content, "{invalid json");
+}
+
+#[test]
+fn gateway_check_port_available_fails_when_settings_json_is_corrupted() {
+    let app = support::TestApp::new();
+    let handle = app.handle();
+
+    let app_data_dir =
+        aio_coding_hub_lib::test_support::app_data_dir(&handle).expect("app data dir");
+    std::fs::create_dir_all(&app_data_dir).expect("create app data dir");
+    let settings_path = app_data_dir.join("settings.json");
+    std::fs::write(&settings_path, "{invalid json").expect("write corrupted settings");
+
+    let err = aio_coding_hub_lib::test_support::gateway_check_port_available_json(&handle, 37123)
+        .expect_err("gateway_check_port_available should fail");
+
+    let err_text = err.to_string();
+    assert!(
+        err_text.contains("invalid settings.json"),
+        "unexpected error: {err_text}"
+    );
 }

@@ -1,13 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 import { settingsGet } from "../settings";
 import { logToConsole } from "../consoleLog";
-import { invokeTauriOrNull } from "../tauriInvoke";
+import { commands } from "../../generated/bindings";
 
-vi.mock("../tauriInvoke", async () => {
-  const actual = await vi.importActual<typeof import("../tauriInvoke")>("../tauriInvoke");
+vi.mock("../../generated/bindings", async () => {
+  const actual = await vi.importActual<typeof import("../../generated/bindings")>(
+    "../../generated/bindings"
+  );
   return {
     ...actual,
-    invokeTauriOrNull: vi.fn(),
+    commands: {
+      ...actual.commands,
+      settingsGet: vi.fn(),
+    },
   };
 });
 
@@ -21,7 +26,7 @@ vi.mock("../consoleLog", async () => {
 
 describe("services/settings (error semantics)", () => {
   it("rethrows invoke errors and logs", async () => {
-    vi.mocked(invokeTauriOrNull).mockRejectedValueOnce(new Error("settings boom"));
+    vi.mocked(commands.settingsGet).mockRejectedValueOnce(new Error("settings boom"));
 
     await expect(settingsGet()).rejects.toThrow("settings boom");
     expect(logToConsole).toHaveBeenCalledWith(
@@ -35,7 +40,7 @@ describe("services/settings (error semantics)", () => {
   });
 
   it("treats null invoke result as error with runtime", async () => {
-    vi.mocked(invokeTauriOrNull).mockResolvedValueOnce(null);
+    vi.mocked(commands.settingsGet).mockResolvedValueOnce({ status: "ok", data: null as any });
 
     await expect(settingsGet()).rejects.toThrow("IPC_NULL_RESULT: settings_get");
   });

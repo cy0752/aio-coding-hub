@@ -1,3 +1,5 @@
+import { commands } from "../generated/bindings";
+import { invokeGeneratedIpc, type GeneratedCommandResult } from "./generatedIpc";
 import { invokeService } from "./invokeServiceCommand";
 import { invokeTauriOrNull } from "./tauriInvoke";
 
@@ -42,7 +44,13 @@ export type ProviderSummary = {
 };
 
 export async function providersList(cliKey: CliKey) {
-  return invokeService<ProviderSummary[]>("读取供应商列表失败", "providers_list", { cliKey });
+  return invokeGeneratedIpc<ProviderSummary[]>({
+    title: "读取供应商列表失败",
+    cmd: "providers_list",
+    args: { cliKey },
+    invoke: () =>
+      commands.providersList(cliKey) as Promise<GeneratedCommandResult<ProviderSummary[]>>,
+  });
 }
 
 export async function providerUpsert(input: {
@@ -69,31 +77,41 @@ export async function providerUpsert(input: {
   source_provider_id?: number | null;
   bridge_type?: string | null;
 }) {
-  return invokeService<ProviderSummary>("保存供应商失败", "provider_upsert", {
-    input: {
-      providerId: input.provider_id ?? null,
-      cliKey: input.cli_key,
-      name: input.name,
-      baseUrls: input.base_urls,
-      baseUrlMode: input.base_url_mode,
-      authMode: input.auth_mode ?? null,
-      apiKey: input.api_key ?? null,
-      enabled: input.enabled,
-      costMultiplier: input.cost_multiplier,
-      priority: input.priority ?? null,
-      claudeModels: input.claude_models ?? null,
-      limit5hUsd: input.limit_5h_usd,
-      limitDailyUsd: input.limit_daily_usd,
-      dailyResetMode: input.daily_reset_mode,
-      dailyResetTime: input.daily_reset_time,
-      limitWeeklyUsd: input.limit_weekly_usd,
-      limitMonthlyUsd: input.limit_monthly_usd,
-      limitTotalUsd: input.limit_total_usd,
-      tags: input.tags ?? null,
-      note: input.note ?? null,
-      sourceProviderId: input.source_provider_id ?? null,
-      bridgeType: input.bridge_type ?? null,
-    },
+  const payload = {
+    providerId: input.provider_id ?? null,
+    cliKey: input.cli_key,
+    name: input.name,
+    baseUrls: input.base_urls,
+    baseUrlMode: input.base_url_mode,
+    authMode: input.auth_mode ?? null,
+    apiKey: input.api_key ?? null,
+    enabled: input.enabled,
+    costMultiplier: input.cost_multiplier,
+    priority: input.priority ?? null,
+    claudeModels: input.claude_models ?? null,
+    limit5hUsd: input.limit_5h_usd,
+    limitDailyUsd: input.limit_daily_usd,
+    dailyResetMode: input.daily_reset_mode,
+    dailyResetTime: input.daily_reset_time,
+    limitWeeklyUsd: input.limit_weekly_usd,
+    limitMonthlyUsd: input.limit_monthly_usd,
+    limitTotalUsd: input.limit_total_usd,
+    tags: input.tags ?? null,
+    note: input.note ?? null,
+    sourceProviderId: input.source_provider_id ?? null,
+    bridgeType: input.bridge_type ?? null,
+  };
+  const logPayload = {
+    ...payload,
+    apiKey: payload.apiKey == null ? payload.apiKey : "[REDACTED]",
+  };
+
+  return invokeGeneratedIpc<ProviderSummary>({
+    title: "保存供应商失败",
+    cmd: "provider_upsert",
+    args: { input: logPayload },
+    invoke: () =>
+      commands.providerUpsert(payload) as Promise<GeneratedCommandResult<ProviderSummary>>,
   });
 }
 

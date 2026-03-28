@@ -44,6 +44,9 @@ export type SettingsMainColumnProps = {
   gatewayAvailable: GatewayAvailability;
 
   settingsReady: boolean;
+  settingsReadErrorMessage: string | null;
+  settingsWriteBlocked: boolean;
+  settingsSaving: boolean;
 
   port: number;
   setPort: (next: number) => void;
@@ -86,6 +89,9 @@ export function SettingsMainColumn({
   gateway,
   gatewayAvailable,
   settingsReady,
+  settingsReadErrorMessage,
+  settingsWriteBlocked,
+  settingsSaving,
   port,
   setPort,
   showHomeHeatmap,
@@ -112,9 +118,22 @@ export function SettingsMainColumn({
 }: SettingsMainColumnProps) {
   const { theme, setTheme } = useTheme();
   const queryClient = useQueryClient();
+  const settingsInputsDisabled = !settingsReady || settingsWriteBlocked || settingsSaving;
+  const gatewayRestartDisabled =
+    gatewayAvailable !== "available" || settingsWriteBlocked || settingsSaving;
+  const gatewayStopDisabled =
+    gatewayAvailable !== "available" || !gateway?.running || settingsSaving;
 
   return (
     <div className="space-y-6 lg:col-span-8">
+      {settingsReadErrorMessage ? (
+        <div
+          role="alert"
+          className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+        >
+          {settingsReadErrorMessage}
+        </div>
+      ) : null}
       {/* 网关服务 */}
       <Card>
         <div className="mb-4 flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-4">
@@ -173,7 +192,7 @@ export function SettingsMainColumn({
                 }}
                 variant={gateway?.running ? "secondary" : "primary"}
                 size="sm"
-                disabled={gatewayAvailable !== "available"}
+                disabled={gatewayRestartDisabled}
               >
                 {gateway?.running ? "重启" : "启动"}
               </Button>
@@ -190,7 +209,7 @@ export function SettingsMainColumn({
                 }}
                 variant="secondary"
                 size="sm"
-                disabled={gatewayAvailable !== "available" || !gateway?.running}
+                disabled={gatewayStopDisabled}
               >
                 停止
               </Button>
@@ -218,7 +237,7 @@ export function SettingsMainColumn({
               className="w-28 font-mono"
               min={1024}
               max={65535}
-              disabled={!settingsReady}
+              disabled={settingsInputsDisabled}
             />
           </SettingsRow>
         </div>
@@ -245,21 +264,21 @@ export function SettingsMainColumn({
                       key: "auto_start" as const,
                       checked: autoStart,
                       setter: setAutoStart,
-                      disabled: !settingsReady,
+                      disabled: settingsInputsDisabled,
                     },
                     {
                       label: "静默启动",
                       key: "start_minimized" as const,
                       checked: startMinimized,
                       setter: setStartMinimized,
-                      disabled: !settingsReady || !autoStart,
+                      disabled: settingsInputsDisabled || !autoStart,
                     },
                     {
                       label: "托盘常驻",
                       key: "tray_enabled" as const,
                       checked: trayEnabled,
                       setter: setTrayEnabled,
-                      disabled: !settingsReady,
+                      disabled: settingsInputsDisabled,
                     },
                   ] satisfies {
                     label: string;
@@ -302,7 +321,7 @@ export function SettingsMainColumn({
                       className="h-8 w-16 text-xs"
                       min={1}
                       max={3650}
-                      disabled={!settingsReady}
+                      disabled={settingsInputsDisabled}
                     />
                     <span className="text-sm text-slate-500 dark:text-slate-400">天</span>
                   </div>
@@ -425,7 +444,7 @@ export function SettingsMainColumn({
                         setHomeUsagePeriod(option.value);
                         requestPersist({ home_usage_period: option.value });
                       }}
-                      disabled={!settingsReady}
+                      disabled={settingsInputsDisabled}
                     >
                       {option.label}
                     </button>
@@ -444,14 +463,14 @@ export function SettingsMainColumn({
                     key: "show_home_heatmap" as const,
                     checked: showHomeHeatmap,
                     setter: setShowHomeHeatmap,
-                    disabled: !settingsReady,
+                    disabled: settingsInputsDisabled,
                   },
                   {
                     label: "显示首页用量统计",
                     key: "show_home_usage" as const,
                     checked: showHomeUsage,
                     setter: setShowHomeUsage,
-                    disabled: !settingsReady,
+                    disabled: settingsInputsDisabled,
                   },
                 ] satisfies {
                   label: string;

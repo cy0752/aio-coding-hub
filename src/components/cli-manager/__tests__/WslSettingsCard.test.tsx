@@ -735,4 +735,47 @@ describe("components/cli-manager/WslSettingsCard", () => {
       expect.objectContaining({ wslCustomHostAddress: "172.20.0.1:123" })
     );
   });
+
+  it("disables listen-mode confirmation while settings are saving", async () => {
+    const settingsSetMutation = { isPending: false, mutateAsync: vi.fn() };
+    vi.mocked(useSettingsSetMutation).mockReturnValue(settingsSetMutation as any);
+    vi.mocked(useAppAboutQuery).mockReturnValue({ data: { os: "windows" } } as any);
+    vi.mocked(useWslOverviewQuery).mockReturnValue({
+      data: { detection: { detected: true, distros: ["Ubuntu"] }, hostIp: null, statusRows: [] },
+      isFetched: true,
+      isFetching: false,
+      refetch: vi.fn(),
+    } as any);
+    vi.mocked(useWslConfigureClientsMutation).mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn(),
+    } as any);
+
+    render(
+      <WslSettingsCard
+        available={true}
+        saving={true}
+        settings={
+          {
+            gateway_listen_mode: "localhost",
+            wsl_auto_config: true,
+            wsl_host_address_mode: "auto",
+            wsl_custom_host_address: "127.0.0.1",
+            preferred_port: 37123,
+            auto_start: false,
+            log_retention_days: 7,
+            failover_max_attempts_per_provider: 5,
+            failover_max_providers_to_try: 5,
+          } as any
+        }
+      />
+    );
+
+    await waitFor(() => expect(tauriListen).toHaveBeenCalled());
+    emitTauriEvent("wsl:localhost_switch_prompt", null);
+
+    expect(await screen.findByRole("button", { name: "切换" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "切换" }));
+    expect(settingsSetMutation.mutateAsync).not.toHaveBeenCalled();
+  });
 });

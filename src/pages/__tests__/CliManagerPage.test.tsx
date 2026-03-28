@@ -338,6 +338,84 @@ describe("pages/CliManagerPage", () => {
     await waitFor(() => expect(toast).toHaveBeenCalledWith("更新通用网关参数失败：请稍后重试"));
   });
 
+  it("blocks app settings writes when settings query is readonly", () => {
+    vi.mocked(useSettingsQuery).mockReturnValue({
+      data: createAppSettings(),
+      isLoading: false,
+      isError: true,
+      error: new Error("boom"),
+    } as any);
+
+    const rectifierMutation = { isPending: false, mutateAsync: vi.fn() };
+    const noticeMutation = { isPending: false, mutateAsync: vi.fn() };
+    const completionMutation = { isPending: false, mutateAsync: vi.fn() };
+    const commonMutation = { isPending: false, mutateAsync: vi.fn() };
+    vi.mocked(useSettingsGatewayRectifierSetMutation).mockReturnValue(rectifierMutation as any);
+    vi.mocked(useSettingsCircuitBreakerNoticeSetMutation).mockReturnValue(noticeMutation as any);
+    vi.mocked(useSettingsCodexSessionIdCompletionSetMutation).mockReturnValue(
+      completionMutation as any
+    );
+    vi.mocked(useSettingsSetMutation).mockReturnValue(commonMutation as any);
+
+    vi.mocked(useCliManagerClaudeInfoQuery).mockReturnValue({
+      data: null,
+      isFetching: false,
+      refetch: vi.fn(),
+    } as any);
+    vi.mocked(useCliManagerClaudeSettingsQuery).mockReturnValue({
+      data: null,
+      isFetching: false,
+      refetch: vi.fn(),
+    } as any);
+    vi.mocked(useCliManagerClaudeSettingsSetMutation).mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn(),
+    } as any);
+    vi.mocked(useCliManagerCodexInfoQuery).mockReturnValue({
+      data: null,
+      isFetching: false,
+      refetch: vi.fn(),
+    } as any);
+    vi.mocked(useCliManagerCodexConfigQuery).mockReturnValue({
+      data: null,
+      isFetching: false,
+      refetch: vi.fn(),
+    } as any);
+    vi.mocked(useCliManagerCodexConfigSetMutation).mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn(),
+    } as any);
+    vi.mocked(useCliManagerCodexConfigTomlQuery).mockReturnValue({
+      data: null,
+      isFetching: false,
+      refetch: vi.fn(),
+    } as any);
+    vi.mocked(useCliManagerCodexConfigTomlSetMutation).mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn(),
+    } as any);
+    vi.mocked(useCliManagerGeminiInfoQuery).mockReturnValue({
+      data: null,
+      isFetching: false,
+      refetch: vi.fn(),
+    } as any);
+
+    renderWithProviders(<CliManagerPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "persist-rectifier" }));
+    fireEvent.click(screen.getByRole("button", { name: "persist-circuit-notice" }));
+    fireEvent.click(screen.getByRole("button", { name: "persist-codex-completion" }));
+    fireEvent.click(screen.getByRole("button", { name: "persist-common" }));
+
+    expect(rectifierMutation.mutateAsync).not.toHaveBeenCalled();
+    expect(noticeMutation.mutateAsync).not.toHaveBeenCalled();
+    expect(completionMutation.mutateAsync).not.toHaveBeenCalled();
+    expect(commonMutation.mutateAsync).not.toHaveBeenCalled();
+    expect(toast).toHaveBeenCalledWith(
+      "设置文件读取失败，已进入只读保护。请先修复或恢复 settings.json 后刷新页面。"
+    );
+  });
+
   it("drives claude/codex/gemini tab actions and handles open dir edge cases", async () => {
     vi.mocked(useSettingsQuery).mockReturnValue({
       data: createAppSettings(),

@@ -647,7 +647,15 @@ fn resolve_runtime_warmup_decision(
     forwarded_path: &str,
     introspection_json: Option<&serde_json::Value>,
 ) -> RuntimeWarmupDecision {
-    let settings_cfg = settings::read(&state.app).ok();
+    let settings_cfg = match settings::read(&state.app) {
+        Ok(cfg) => Some(cfg),
+        Err(err) => {
+            tracing::warn!(
+                "using default handler runtime settings because settings read failed: {err}"
+            );
+            None
+        }
+    };
     let runtime_settings = handler_runtime_settings(settings_cfg.as_ref(), is_claude_count_tokens);
     let is_warmup_request = should_intercept_warmup_request(
         cli_key,
