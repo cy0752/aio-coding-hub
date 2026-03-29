@@ -2,14 +2,16 @@
 //!
 //! Note: this module is being split into smaller submodules under `handler/`.
 
+use super::logging::enqueue_request_log_placeholder;
 use super::request_context::{RequestContext, RequestContextParts};
 use super::request_end::{
     emit_request_event_and_enqueue_request_log, emit_request_event_and_spawn_request_log,
     RequestEndArgs, RequestEndDeps,
 };
 use super::{
-    cli_proxy_guard::cli_proxy_enabled_cached, errors::error_response,
-    is_claude_count_tokens_request, should_observe_request,
+    build_claude_probe_response_body, cli_proxy_guard::cli_proxy_enabled_cached,
+    compute_observe_request, errors::error_response, is_claude_count_tokens_request,
+    is_claude_probe_request, is_internal_forwarded_request, should_seed_in_progress_request_log,
 };
 use super::{ErrorCategory, GatewayErrorCode};
 use provider_selection::{
@@ -110,6 +112,12 @@ fn cli_proxy_disabled_message(cli_key: &str, error: Option<&str>) -> String {
     }
 }
 
+fn proxy_loop_detected_message(cli_key: &str) -> String {
+    format!(
+        "recursive proxy request blocked for cli_key={cli_key}; upstream preserved aio internal forward marker"
+    )
+}
+
 fn extract_forced_provider_id(headers: &axum::http::HeaderMap) -> Option<i64> {
     let raw = headers.get("x-aio-provider-id")?.to_str().ok()?.trim();
     let provider_id = raw.parse::<i64>().ok()?;
@@ -172,12 +180,59 @@ fn push_special_setting(special_settings: &SpecialSettings, setting: serde_json:
     settings.push(setting);
 }
 
+#[allow(clippy::too_many_arguments)]
+async fn enqueue_in_progress_request_log_if_needed(
+    state: &GatewayAppState,
+    trace_id: &str,
+    cli_key: &str,
+    forwarded_path: &str,
+    observe: bool,
+    method_hint: &str,
+    query: Option<&str>,
+    session_id: Option<&str>,
+    requested_model: Option<&str>,
+    created_at_ms: i64,
+    created_at: i64,
+    special_settings: &SpecialSettings,
+) {
+    if !should_seed_in_progress_request_log(cli_key, forwarded_path, observe) {
+        return;
+    }
+
+    enqueue_request_log_placeholder(
+        &state.app,
+        &state.log_tx,
+        super::RequestLogEnqueueArgs {
+            trace_id: trace_id.to_string(),
+            cli_key: cli_key.to_string(),
+            session_id: session_id.map(str::to_string),
+            method: method_hint.to_string(),
+            path: forwarded_path.to_string(),
+            query: query.map(str::to_string),
+            excluded_from_stats: false,
+            special_settings_json: response_fixer::special_settings_json(special_settings),
+            status: None,
+            error_code: None,
+            duration_ms: 0,
+            ttfb_ms: None,
+            attempts_json: "[]".to_string(),
+            requested_model: requested_model.map(str::to_string),
+            created_at_ms,
+            created_at,
+            usage_metrics: None,
+            usage: None,
+        },
+    )
+    .await;
+}
+
 struct EarlyErrorLogCtx<'a> {
     state: &'a GatewayAppState,
     trace_id: &'a str,
     cli_key: &'a str,
     method_hint: &'a str,
     forwarded_path: &'a str,
+    observe: bool,
     query: Option<&'a str>,
     duration_ms: u128,
     created_at_ms: i64,
@@ -192,6 +247,7 @@ impl<'a> EarlyErrorLogCtx<'a> {
         cli_key: &'a str,
         method_hint: &'a str,
         forwarded_path: &'a str,
+        observe: bool,
         query: Option<&'a str>,
         duration_ms: u128,
         created_at_ms: i64,
@@ -203,6 +259,7 @@ impl<'a> EarlyErrorLogCtx<'a> {
             cli_key,
             method_hint,
             forwarded_path,
+            observe,
             query,
             duration_ms,
             created_at_ms,
@@ -219,6 +276,7 @@ fn build_early_error_log_ctx<'a>(
     cli_key: &'a str,
     method_hint: &'a str,
     forwarded_path: &'a str,
+    observe: bool,
     query: Option<&'a str>,
     created_at_ms: i64,
     created_at: i64,
@@ -229,6 +287,7 @@ fn build_early_error_log_ctx<'a>(
         cli_key,
         method_hint,
         forwarded_path,
+        observe,
         query,
         started.elapsed().as_millis(),
         created_at_ms,
@@ -263,6 +322,7 @@ fn early_error_request_end_args<'a>(
         cli_key: ctx.cli_key,
         method: ctx.method_hint,
         path: ctx.forwarded_path,
+        observe: ctx.observe,
         query: ctx.query,
         excluded_from_stats: contract.excluded_from_stats,
         status: Some(contract.status.as_u16()),
@@ -461,6 +521,7 @@ struct WarmupInterceptCtx<'a> {
     cli_key: &'a str,
     method_hint: &'a str,
     forwarded_path: &'a str,
+    observe: bool,
     query: Option<&'a str>,
     requested_model: Option<&'a str>,
     created_at_ms: i64,
@@ -495,16 +556,18 @@ fn respond_warmup_intercept(ctx: &WarmupInterceptCtx<'_>) -> Response {
     let response_body = warmup::build_warmup_response_body(ctx.requested_model, ctx.trace_id);
     let special_settings_json = warmup_intercept_special_settings_json();
 
-    emit_request_start_event(
-        &ctx.state.app,
-        ctx.trace_id.to_string(),
-        ctx.cli_key.to_string(),
-        ctx.method_hint.to_string(),
-        ctx.forwarded_path.to_string(),
-        ctx.query.map(str::to_string),
-        ctx.requested_model.map(str::to_string),
-        ctx.created_at,
-    );
+    if ctx.observe {
+        emit_request_start_event(
+            &ctx.state.app,
+            ctx.trace_id.to_string(),
+            ctx.cli_key.to_string(),
+            ctx.method_hint.to_string(),
+            ctx.forwarded_path.to_string(),
+            ctx.query.map(str::to_string),
+            ctx.requested_model.map(str::to_string),
+            ctx.created_at,
+        );
+    }
 
     let warmup_attempts = [super::super::events::FailoverAttempt {
         provider_id: 0,
@@ -535,6 +598,7 @@ fn respond_warmup_intercept(ctx: &WarmupInterceptCtx<'_>) -> Response {
         cli_key: ctx.cli_key,
         method: ctx.method_hint,
         path: ctx.forwarded_path,
+        observe: ctx.observe,
         query: ctx.query,
         excluded_from_stats: true,
         status: Some(StatusCode::OK.as_u16()),
@@ -695,6 +759,25 @@ pub(in crate::gateway) async fn proxy_impl(
         (parts.headers, body)
     };
 
+    if cli_key == "claude" && is_internal_forwarded_request(&headers) {
+        emit_gateway_log(
+            &state.app,
+            "warn",
+            GatewayErrorCode::InternalError.as_str(),
+            format!(
+                "detected recursive claude proxy hop, blocking request trace_id={trace_id} path={forwarded_path}"
+            ),
+        );
+
+        return error_response(
+            StatusCode::LOOP_DETECTED,
+            trace_id,
+            GatewayErrorCode::InternalError.as_str(),
+            proxy_loop_detected_message(cli_key.as_str()),
+            vec![],
+        );
+    }
+
     let forced_provider_id = extract_forced_provider_id(&headers);
     let bypass_cli_proxy_guard = forced_provider_id.is_some();
 
@@ -728,6 +811,7 @@ pub(in crate::gateway) async fn proxy_impl(
                 cli_key.as_str(),
                 method_hint.as_str(),
                 forwarded_path.as_str(),
+                compute_observe_request(&cli_key, &forwarded_path, &headers, None),
                 query.as_deref(),
                 created_at_ms,
                 created_at,
@@ -758,6 +842,7 @@ pub(in crate::gateway) async fn proxy_impl(
                 cli_key.as_str(),
                 method_hint.as_str(),
                 forwarded_path.as_str(),
+                compute_observe_request(&cli_key, &forwarded_path, &headers, None),
                 query.as_deref(),
                 created_at_ms,
                 created_at,
@@ -786,6 +871,25 @@ pub(in crate::gateway) async fn proxy_impl(
     );
     let requested_model = requested_model_info.model;
     let requested_model_location = requested_model_info.location;
+    let observe_request = compute_observe_request(
+        &cli_key,
+        &forwarded_path,
+        &headers,
+        introspection_json.as_ref(),
+    );
+
+    if cli_key == "claude" && is_claude_probe_request(&forwarded_path, introspection_json.as_ref())
+    {
+        let mut resp = (StatusCode::OK, Json(build_claude_probe_response_body())).into_response();
+        resp.headers_mut().insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json; charset=utf-8"),
+        );
+        if let Ok(value) = HeaderValue::from_str(trace_id.as_str()) {
+            resp.headers_mut().insert("x-trace-id", value);
+        }
+        return resp;
+    }
 
     let RuntimeWarmupDecision {
         runtime_settings,
@@ -806,6 +910,7 @@ pub(in crate::gateway) async fn proxy_impl(
             cli_key: cli_key.as_str(),
             method_hint: method_hint.as_str(),
             forwarded_path: forwarded_path.as_str(),
+            observe: observe_request,
             query: query.as_deref(),
             requested_model: requested_model.as_deref(),
             created_at_ms,
@@ -859,6 +964,7 @@ pub(in crate::gateway) async fn proxy_impl(
                 cli_key.as_str(),
                 method_hint.as_str(),
                 forwarded_path.as_str(),
+                observe_request,
                 query.as_deref(),
                 created_at_ms,
                 created_at,
@@ -898,6 +1004,7 @@ pub(in crate::gateway) async fn proxy_impl(
             cli_key.as_str(),
             method_hint.as_str(),
             forwarded_path.as_str(),
+            observe_request,
             query.as_deref(),
             created_at_ms,
             created_at,
@@ -931,7 +1038,7 @@ pub(in crate::gateway) async fn proxy_impl(
         Err(resp) => return *resp,
     };
 
-    if should_observe_request(&cli_key, &forwarded_path) {
+    if observe_request {
         emit_request_start_event(
             &state.app,
             trace_id.clone(),
@@ -944,10 +1051,27 @@ pub(in crate::gateway) async fn proxy_impl(
         );
     }
 
+    enqueue_in_progress_request_log_if_needed(
+        &state,
+        trace_id.as_str(),
+        cli_key.as_str(),
+        forwarded_path.as_str(),
+        observe_request,
+        method_hint.as_str(),
+        query.as_deref(),
+        session_id.as_deref(),
+        requested_model.as_deref(),
+        created_at_ms,
+        created_at,
+        &special_settings,
+    )
+    .await;
+
     super::forwarder::forward(RequestContext::from_handler_parts(RequestContextParts {
         state,
         cli_key,
         forwarded_path,
+        observe_request,
         req_method: method,
         method_hint,
         query,

@@ -18,6 +18,7 @@ use std::time::Instant;
 pub(super) struct AllUnavailableInput<'a> {
     pub(super) state: &'a GatewayAppState,
     pub(super) abort_guard: &'a mut RequestAbortGuard,
+    pub(super) observe: bool,
     pub(super) cli_key: String,
     pub(super) method_hint: String,
     pub(super) forwarded_path: String,
@@ -44,6 +45,7 @@ pub(super) async fn all_providers_unavailable(input: AllUnavailableInput<'_>) ->
     let AllUnavailableInput {
         state,
         abort_guard,
+        observe,
         cli_key,
         method_hint,
         forwarded_path,
@@ -108,6 +110,7 @@ pub(super) async fn all_providers_unavailable(input: AllUnavailableInput<'_>) ->
         cli_key: cli_key.as_str(),
         method: method_hint.as_str(),
         path: forwarded_path.as_str(),
+        observe,
         query: query.as_deref(),
         excluded_from_stats: false,
         status: Some(StatusCode::SERVICE_UNAVAILABLE.as_u16()),
@@ -165,6 +168,7 @@ pub(super) async fn all_providers_unavailable(input: AllUnavailableInput<'_>) ->
 pub(super) struct AllFailedInput<'a> {
     pub(super) state: &'a GatewayAppState,
     pub(super) abort_guard: &'a mut RequestAbortGuard,
+    pub(super) observe: bool,
     pub(super) attempts: Vec<FailoverAttempt>,
     pub(super) last_error_category: Option<&'static str>,
     pub(super) last_error_code: Option<&'static str>,
@@ -186,6 +190,7 @@ pub(super) async fn all_providers_failed(input: AllFailedInput<'_>) -> Response 
     let AllFailedInput {
         state,
         abort_guard,
+        observe,
         attempts,
         last_error_category,
         last_error_code,
@@ -234,6 +239,7 @@ pub(super) async fn all_providers_failed(input: AllFailedInput<'_>) -> Response 
         cli_key: cli_key.as_str(),
         method: method_hint.as_str(),
         path: forwarded_path.as_str(),
+        observe,
         query: query.as_deref(),
         excluded_from_stats: false,
         status: Some(StatusCode::BAD_GATEWAY.as_u16()),

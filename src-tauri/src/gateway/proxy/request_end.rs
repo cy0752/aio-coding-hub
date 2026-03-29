@@ -28,6 +28,7 @@ pub(super) struct RequestEndArgs<'a> {
     pub(super) cli_key: &'a str,
     pub(super) method: &'a str,
     pub(super) path: &'a str,
+    pub(super) observe: bool,
     pub(super) query: Option<&'a str>,
     pub(super) excluded_from_stats: bool,
     pub(super) status: Option<u16>,
@@ -303,7 +304,7 @@ pub(super) async fn emit_request_event_and_enqueue_request_log(args: RequestEndA
         );
     }
 
-    if !super::should_observe_request(args.cli_key, args.path) {
+    if !args.observe {
         return;
     }
 
@@ -340,7 +341,7 @@ pub(super) fn emit_request_event_and_spawn_request_log(args: RequestEndArgs<'_>)
         );
     }
 
-    if !super::should_observe_request(args.cli_key, args.path) {
+    if !args.observe {
         return;
     }
 
@@ -471,11 +472,12 @@ mod tests {
     }
 
     #[test]
-    fn should_not_observe_claude_count_tokens_request_end() {
+    fn should_not_observe_non_messages_claude_request_end() {
         assert!(!super::super::should_observe_request(
             "claude",
             "/v1/messages/count_tokens"
         ));
+        assert!(!super::super::should_observe_request("claude", "/v1/other"));
         assert!(super::super::should_observe_request(
             "claude",
             "/v1/messages"

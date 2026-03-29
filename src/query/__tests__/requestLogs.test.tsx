@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   requestAttemptLogsByTraceId,
   requestLogGet,
@@ -68,6 +68,10 @@ function makeRequestLogSummary(overrides: Partial<RequestLogSummary> = {}): Requ
 }
 
 describe("query/requestLogs", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("calls requestLogsListAll with tauri runtime", async () => {
     setTauriRuntime();
 
@@ -83,16 +87,11 @@ describe("query/requestLogs", () => {
     });
   });
 
-  it("filters Claude internal count_tokens rows from list-all results", async () => {
+  it("passes through rows from the backend list-all query", async () => {
     setTauriRuntime();
 
     vi.mocked(requestLogsListAll).mockResolvedValue([
-      makeRequestLogSummary({
-        id: 1,
-        path: "/v1/messages/count_tokens",
-        status: 403,
-        error_code: "upstream_403",
-      }),
+      makeRequestLogSummary({ id: 1, path: "/v1/messages", created_at: 10 }),
       makeRequestLogSummary({ id: 2, path: "/v1/messages", created_at: 11 }),
     ]);
 
@@ -102,7 +101,7 @@ describe("query/requestLogs", () => {
     const { result } = renderHook(() => useRequestLogsListAllQuery(10), { wrapper });
 
     await waitFor(() => {
-      expect(result.current.data?.map((row) => row.id)).toEqual([2]);
+      expect(result.current.data?.map((row) => row.id)).toEqual([1, 2]);
     });
   });
 
@@ -213,13 +212,6 @@ describe("query/requestLogs", () => {
 
     vi.mocked(requestLogsListAll).mockResolvedValueOnce([
       makeRequestLogSummary({ id: 1, created_at: 10, created_at_ms: null }),
-      makeRequestLogSummary({
-        id: 99,
-        path: "/v1/messages/count_tokens",
-        status: 403,
-        error_code: "upstream_403",
-        created_at: 12,
-      }),
       makeRequestLogSummary({ id: 2, created_at: 11, created_at_ms: 1 }),
     ] as any);
 
@@ -230,18 +222,9 @@ describe("query/requestLogs", () => {
 
     const sorted = client.getQueryData<any[]>(listKey) ?? [];
     expect(sorted[0]?.id).toBe(1); // created_at_ms fallback wins over created_at
-    expect(sorted.some((row) => row.id === 99)).toBe(false);
 
     // cursor > 0 -> listAfterIdAll and merge path
     vi.mocked(requestLogsListAfterIdAll).mockResolvedValueOnce([
-      makeRequestLogSummary({
-        id: 4,
-        path: "/v1/messages/count_tokens",
-        status: 503,
-        error_code: "upstream_503",
-        created_at: 13,
-        created_at_ms: 13000,
-      }),
       makeRequestLogSummary({ id: 3, created_at: 12, created_at_ms: 12000 }),
     ] as any);
 
@@ -252,10 +235,36 @@ describe("query/requestLogs", () => {
 
     const merged = client.getQueryData<any[]>(listKey) ?? [];
     expect(merged.some((r) => r.id === 3)).toBe(true);
-    expect(merged.some((r) => r.id === 4)).toBe(false);
   });
 
-  it("incremental refresh mutation filters internal rows and keeps cache stable on null items", async () => {
+  it("incremental poll falls back to full refresh while an in-progress row is cached", async () => {
+    setTauriRuntime();
+
+    const client = createTestQueryClient();
+    const wrapper = createQueryWrapper(client);
+    const listKey = ["requestLogs", "list", "all", 10] as any;
+
+    client.setQueryData(listKey, [
+      makeRequestLogSummary({ id: 5, status: null, error_code: null, created_at: 20 }),
+    ] as any);
+
+    vi.mocked(requestLogsListAll).mockResolvedValueOnce([
+      makeRequestLogSummary({ id: 5, status: 200, error_code: null, created_at: 20 }),
+    ] as any);
+
+    const { result } = renderHook(() => useRequestLogsIncrementalPollQuery(10), { wrapper });
+
+    await act(async () => {
+      const res = await result.current.refetch();
+      expect(res.data).toBe(1);
+    });
+
+    expect(requestLogsListAll).toHaveBeenCalledWith(10);
+    expect(requestLogsListAfterIdAll).not.toHaveBeenCalled();
+    expect((client.getQueryData<any[]>(listKey) ?? [])[0]?.status).toBe(200);
+  });
+
+  it("incremental refresh mutation keeps backend rows and cache stable on null items", async () => {
     setTauriRuntime();
 
     const client = createTestQueryClient();
@@ -264,12 +273,7 @@ describe("query/requestLogs", () => {
     const listKey = ["requestLogs", "list", "all", 10] as any;
 
     vi.mocked(requestLogsListAll).mockResolvedValueOnce([
-      makeRequestLogSummary({
-        id: 1,
-        path: "/v1/messages/count_tokens",
-        status: 403,
-        error_code: "upstream_403",
-      }),
+      makeRequestLogSummary({ id: 1, created_at: 9, created_at_ms: null }),
       makeRequestLogSummary({ id: 2, created_at: 10, created_at_ms: null }),
     ] as any);
     const { result } = renderHook(() => useRequestLogsIncrementalRefreshMutation(10), { wrapper });
@@ -277,28 +281,35 @@ describe("query/requestLogs", () => {
     await act(async () => {
       const res = await result.current.mutateAsync();
       expect(res?.mode).toBe("full");
-      expect(res?.items?.map((row) => row.id)).toEqual([2]);
+      expect(res?.items?.map((row) => row.id)).toEqual([1, 2]);
     });
-    expect((client.getQueryData<any[]>(listKey) ?? []).map((row) => row.id)).toEqual([2]);
+    expect((client.getQueryData<any[]>(listKey) ?? []).map((row) => row.id)).toEqual([2, 1]);
 
     client.setQueryData(listKey, [makeRequestLogSummary({ id: 5, created_at: 10 })] as any);
     vi.mocked(requestLogsListAfterIdAll).mockResolvedValueOnce([
-      makeRequestLogSummary({
-        id: 6,
-        path: "/v1/messages/count_tokens",
-        status: 503,
-        error_code: "upstream_503",
-        created_at: 11,
-      }),
+      makeRequestLogSummary({ id: 6, created_at: 11 }),
       makeRequestLogSummary({ id: 7, created_at: 12 }),
     ] as any);
     await act(async () => {
       const res = await result.current.mutateAsync();
       expect(res?.mode).toBe("incremental");
-      expect(res?.items?.map((row) => row.id)).toEqual([7]);
+      expect(res?.items?.map((row) => row.id)).toEqual([6, 7]);
     });
-    expect((client.getQueryData<any[]>(listKey) ?? []).some((row) => row.id === 6)).toBe(false);
+    expect((client.getQueryData<any[]>(listKey) ?? []).some((row) => row.id === 6)).toBe(true);
     expect((client.getQueryData<any[]>(listKey) ?? []).some((row) => row.id === 7)).toBe(true);
+
+    client.setQueryData(listKey, [
+      makeRequestLogSummary({ id: 8, status: null, error_code: null, created_at: 13 }),
+    ] as any);
+    vi.mocked(requestLogsListAll).mockResolvedValueOnce([
+      makeRequestLogSummary({ id: 8, status: 200, error_code: null, created_at: 13 }),
+    ] as any);
+    await act(async () => {
+      const res = await result.current.mutateAsync();
+      expect(res?.mode).toBe("full");
+      expect(res?.items?.map((row) => row.id)).toEqual([8]);
+    });
+    expect((client.getQueryData<any[]>(listKey) ?? [])[0]?.status).toBe(200);
 
     vi.mocked(requestLogsListAfterIdAll).mockResolvedValueOnce(null as any);
     await act(async () => {
@@ -306,6 +317,6 @@ describe("query/requestLogs", () => {
       expect(res?.mode).toBe("incremental");
       expect(res?.items).toBeNull();
     });
-    expect((client.getQueryData<any[]>(listKey) ?? []).some((row) => row.id === 7)).toBe(true);
+    expect((client.getQueryData<any[]>(listKey) ?? []).some((row) => row.id === 8)).toBe(true);
   });
 });

@@ -18,6 +18,7 @@ pub(in crate::gateway) struct StreamFinalizeCtx {
     pub(in crate::gateway) cli_key: String,
     pub(in crate::gateway) method: String,
     pub(in crate::gateway) path: String,
+    pub(in crate::gateway) observe: bool,
     pub(in crate::gateway) query: Option<String>,
     pub(in crate::gateway) excluded_from_stats: bool,
     pub(in crate::gateway) special_settings: Arc<Mutex<Vec<serde_json::Value>>>,

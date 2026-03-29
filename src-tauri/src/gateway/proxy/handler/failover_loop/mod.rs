@@ -50,7 +50,7 @@ use super::super::{
         build_response, has_gzip_content_encoding, has_non_identity_content_encoding,
         is_event_stream, maybe_gunzip_response_body_bytes_with_limit,
     },
-    ErrorCategory, GatewayErrorCode,
+    mark_internal_forwarded_request, ErrorCategory, GatewayErrorCode,
 };
 
 use crate::usage;
@@ -172,6 +172,7 @@ pub(super) async fn run(mut input: RequestContext) -> Response {
         state: &input.state,
         cli_key: &input.cli_key,
         forwarded_path: &input.forwarded_path,
+        observe: input.observe_request,
         method_hint: &input.method_hint,
         query: &input.query,
         trace_id: &input.trace_id,
@@ -946,33 +947,38 @@ pub(super) async fn run(mut input: RequestContext) -> Response {
             input
                 .abort_guard
                 .capture_in_flight_attempt(&started_attempt);
-            emit_attempt_event(
-                &input.state.app,
-                GatewayAttemptEvent {
-                    trace_id: input.trace_id.clone(),
-                    cli_key: input.cli_key.clone(),
-                    method: input.method_hint.clone(),
-                    path: input.forwarded_path.clone(),
-                    query: input.query.clone(),
-                    requested_model: input.requested_model.clone(),
-                    attempt_index,
-                    provider_id,
-                    session_reuse,
-                    provider_name: provider_name_base.clone(),
-                    base_url: provider_base_url_base.clone(),
-                    outcome: "started".to_string(),
-                    status: None,
-                    attempt_started_ms,
-                    attempt_duration_ms: 0,
-                    circuit_state_before: Some(circuit_before.state.as_str()),
-                    circuit_state_after: None,
-                    circuit_failure_count: Some(circuit_before.failure_count),
-                    circuit_failure_threshold: Some(circuit_before.failure_threshold),
-                },
-            );
+            if input.observe_request {
+                emit_attempt_event(
+                    &input.state.app,
+                    GatewayAttemptEvent {
+                        trace_id: input.trace_id.clone(),
+                        cli_key: input.cli_key.clone(),
+                        method: input.method_hint.clone(),
+                        path: input.forwarded_path.clone(),
+                        query: input.query.clone(),
+                        requested_model: input.requested_model.clone(),
+                        attempt_index,
+                        provider_id,
+                        session_reuse,
+                        provider_name: provider_name_base.clone(),
+                        base_url: provider_base_url_base.clone(),
+                        outcome: "started".to_string(),
+                        status: None,
+                        attempt_started_ms,
+                        attempt_duration_ms: 0,
+                        circuit_state_before: Some(circuit_before.state.as_str()),
+                        circuit_state_after: None,
+                        circuit_failure_count: Some(circuit_before.failure_count),
+                        circuit_failure_threshold: Some(circuit_before.failure_threshold),
+                    },
+                );
+            }
 
             let mut headers = input.base_headers.clone();
             ensure_cli_required_headers(&input.cli_key, &mut headers);
+            if input.cli_key == "claude" {
+                mark_internal_forwarded_request(&mut headers);
+            }
             codex_session_id_completion::inject_session_headers_if_needed(
                 &mut headers,
                 cx2cc_codex_session_id.as_deref(),
@@ -1333,6 +1339,7 @@ pub(super) async fn run(mut input: RequestContext) -> Response {
         return finalize::all_providers_unavailable(finalize::AllUnavailableInput {
             state: &input.state,
             abort_guard: &mut input.abort_guard,
+            observe: input.observe_request,
             cli_key: owned.cli_key,
             method_hint: owned.method_hint,
             forwarded_path: owned.forwarded_path,
@@ -1361,6 +1368,7 @@ pub(super) async fn run(mut input: RequestContext) -> Response {
     finalize::all_providers_failed(finalize::AllFailedInput {
         state: &input.state,
         abort_guard: &mut input.abort_guard,
+        observe: input.observe_request,
         attempts,
         last_error_category,
         last_error_code,

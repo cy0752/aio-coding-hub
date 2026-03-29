@@ -219,6 +219,12 @@ Internal helper checklist:
   health.
 - If helper traffic must remain inspectable, expose it only through explicit
   diagnostics, not the default overview/log surfaces.
+- If product wants vendor-style "in progress" logs, create one lifecycle row at
+  request start and update it by `trace_id` on completion. Do not model that
+  request as both a realtime card and a separate request-log record.
+- When logs are updated in place, verify the frontend polling strategy can
+  observe row updates. `afterId`-only polling misses status transitions on an
+  existing row.
 
 ### Mistake 11: Treating Additive Analytics Fields as "Safe Enough" to Skip Contract Updates
 

@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { LogsPage } from "../LogsPage";
 import { createTestQueryClient } from "../../test/utils/reactQuery";
 import { clearTauriRuntime, setTauriRuntime } from "../../test/utils/tauriRuntime";
@@ -12,19 +12,27 @@ import {
   useRequestLogsIncrementalPollQuery,
   useRequestLogsListAllQuery,
 } from "../../query/requestLogs";
+import type { TraceSession } from "../../services/traceStore";
+
+const traceStoreState = vi.hoisted(() => ({
+  traces: [] as TraceSession[],
+}));
 
 vi.mock("../../components/home/HomeRequestLogsPanel", () => ({
   HomeRequestLogsPanel: ({
     requestLogs,
     summaryTextOverride,
     emptyStateTitle,
+    traces,
   }: {
     requestLogs: Array<{ id: number }>;
     summaryTextOverride?: string;
     emptyStateTitle?: string;
+    traces: TraceSession[];
   }) => (
     <div data-testid="home-request-logs-panel">
       count:{requestLogs.length}|summary:{summaryTextOverride ?? ""}|empty:{emptyStateTitle ?? ""}
+      <span data-testid="home-request-logs-traces-count">{traces.length}</span>
     </div>
   ),
 }));
@@ -45,6 +53,12 @@ vi.mock("../../query/requestLogs", async () => {
   };
 });
 
+vi.mock("../../services/traceStore", () => ({
+  useTraceStore: () => ({
+    traces: traceStoreState.traces,
+  }),
+}));
+
 function renderWithProviders(element: ReactElement) {
   const client = createTestQueryClient();
   return render(
@@ -55,8 +69,13 @@ function renderWithProviders(element: ReactElement) {
 }
 
 describe("pages/LogsPage", () => {
+  afterEach(() => {
+    traceStoreState.traces = [];
+  });
+
   it("disables filters when not running in tauri runtime", () => {
     clearTauriRuntime();
+    traceStoreState.traces = [];
 
     vi.mocked(useRequestLogsListAllQuery).mockReturnValue({
       data: null,
@@ -81,6 +100,7 @@ describe("pages/LogsPage", () => {
 
   it("shows validation error when status filter expression is invalid", () => {
     setTauriRuntime();
+    traceStoreState.traces = [];
 
     vi.mocked(useRequestLogsListAllQuery).mockReturnValue({
       data: [],
@@ -103,8 +123,43 @@ describe("pages/LogsPage", () => {
     expect(screen.getByText(/表达式不合法/)).toBeInTheDocument();
   });
 
+  it("passes live traces through to the request logs panel", () => {
+    setTauriRuntime();
+    traceStoreState.traces = [
+      {
+        trace_id: "trace-live",
+        cli_key: "claude",
+        method: "POST",
+        path: "/v1/messages",
+        query: null,
+        requested_model: "claude-3-7-sonnet",
+        first_seen_ms: Date.now() - 1000,
+        last_seen_ms: Date.now(),
+        attempts: [],
+      },
+    ];
+
+    vi.mocked(useRequestLogsListAllQuery).mockReturnValue({
+      data: [],
+      isLoading: false,
+      isFetching: false,
+      refetch: vi.fn(),
+    } as any);
+    vi.mocked(useRequestLogsIncrementalPollQuery).mockReturnValue({ isFetching: false } as any);
+    vi.mocked(useRequestLogDetailQuery).mockReturnValue({ data: null, isFetching: false } as any);
+    vi.mocked(useRequestAttemptLogsByTraceIdQuery).mockReturnValue({
+      data: [],
+      isFetching: false,
+    } as any);
+
+    renderWithProviders(<LogsPage />);
+
+    expect(screen.getByTestId("home-request-logs-traces-count")).toHaveTextContent("1");
+  });
+
   it("filters logs by status expression", () => {
     setTauriRuntime();
+    traceStoreState.traces = [];
 
     vi.mocked(useRequestLogsListAllQuery).mockReturnValue({
       data: [
@@ -152,6 +207,7 @@ describe("pages/LogsPage", () => {
   });
   it("filters logs by negated status expression (!200)", () => {
     setTauriRuntime();
+    traceStoreState.traces = [];
     vi.mocked(useRequestLogsListAllQuery).mockReturnValue({
       data: [
         { id: 1, cli_key: "claude", status: 200, error_code: null, method: "GET", path: "/" },

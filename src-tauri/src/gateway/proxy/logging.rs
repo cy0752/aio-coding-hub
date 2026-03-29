@@ -195,6 +195,64 @@ pub(super) async fn enqueue_request_log_with_backpressure(
     }
 }
 
+pub(super) async fn enqueue_request_log_placeholder(
+    app: &tauri::AppHandle,
+    log_tx: &tokio::sync::mpsc::Sender<request_logs::RequestLogInsert>,
+    args: super::RequestLogEnqueueArgs,
+) {
+    let trace_id = args.trace_id.clone();
+    let cli_key = args.cli_key.clone();
+    let Some(insert) = request_log_insert_from_args(args) else {
+        return;
+    };
+
+    let reserve = tokio::time::timeout(LOG_ENQUEUE_MAX_WAIT, log_tx.reserve()).await;
+    match reserve {
+        Ok(Ok(permit)) => {
+            permit.send(insert);
+        }
+        Ok(Err(_)) => {
+            emit_gateway_log(
+                app,
+                "warn",
+                GatewayErrorCode::RequestLogChannelClosed.as_str(),
+                format!(
+                    "request log placeholder dropped; channel closed trace_id={} cli={}",
+                    trace_id, cli_key
+                ),
+            );
+        }
+        Err(_) => match log_tx.try_send(insert) {
+            Ok(()) => {
+                emit_gateway_log(
+                    app,
+                    "warn",
+                    GatewayErrorCode::RequestLogEnqueueTimeout.as_str(),
+                    format!(
+                        "request log placeholder used try_send fallback after {}ms trace_id={} cli={}",
+                        LOG_ENQUEUE_MAX_WAIT.as_millis(),
+                        trace_id,
+                        cli_key
+                    ),
+                );
+            }
+            Err(_) => {
+                emit_gateway_log(
+                    app,
+                    "warn",
+                    GatewayErrorCode::RequestLogDropped.as_str(),
+                    format!(
+                        "request log placeholder dropped (queue full after {}ms) trace_id={} cli={}",
+                        LOG_ENQUEUE_MAX_WAIT.as_millis(),
+                        trace_id,
+                        cli_key
+                    ),
+                );
+            }
+        },
+    }
+}
+
 pub(in crate::gateway) fn spawn_enqueue_request_log_with_backpressure(
     app: tauri::AppHandle,
     db: db::Db,
@@ -259,6 +317,29 @@ mod tests {
     }
 
     #[test]
+    fn request_log_start_placeholder_is_in_progress_row() {
+        let mut args = base_args();
+        args.status = None;
+        args.error_code = None;
+        args.duration_ms = 0;
+        args.session_id = Some("session-1".to_string());
+        args.query = Some("foo=1".to_string());
+        args.special_settings_json = Some(r#"[{"type":"provider_lock"}]"#.to_string());
+        args.requested_model = Some("claude-sonnet".to_string());
+        args.created_at_ms = 1234;
+        args.created_at = 1;
+
+        assert_eq!(args.status, None);
+        assert_eq!(args.error_code, None);
+        assert_eq!(args.duration_ms, 0);
+        assert_eq!(args.attempts_json, "[]");
+        assert_eq!(args.path, "/v1/messages");
+        assert_eq!(args.requested_model.as_deref(), Some("claude-sonnet"));
+        assert_eq!(args.created_at_ms, 1234);
+        assert_eq!(args.created_at, 1);
+    }
+
+    #[test]
     fn request_log_insert_prefers_usage_extract_over_usage_metrics() {
         let mut args = base_args();
         args.usage_metrics = Some(UsageMetrics {
@@ -309,5 +390,20 @@ mod tests {
 
         let greater_insert = request_log_insert_from_args(greater_args).expect("insert");
         assert_eq!(greater_insert.ttfb_ms, None);
+    }
+
+    #[test]
+    fn request_log_insert_preserves_in_progress_placeholder_shape() {
+        let mut args = base_args();
+        args.status = None;
+        args.error_code = None;
+        args.duration_ms = 0;
+        args.requested_model = Some("claude-sonnet".to_string());
+
+        let insert = request_log_insert_from_args(args).expect("insert");
+        assert_eq!(insert.status, None);
+        assert_eq!(insert.error_code, None);
+        assert_eq!(insert.duration_ms, 0);
+        assert_eq!(insert.requested_model.as_deref(), Some("claude-sonnet"));
     }
 }

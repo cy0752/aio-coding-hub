@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RequestAttemptLog, RequestLogDetail } from "../../../services/requestLogs";
+import type { TraceSession } from "../../../services/traceStore";
 import { RequestLogDetailDialog } from "../RequestLogDetailDialog";
 
 const requestLogQueryState = vi.hoisted(() => ({
@@ -8,6 +9,10 @@ const requestLogQueryState = vi.hoisted(() => ({
   selectedLogLoading: false,
   attemptLogs: [] as RequestAttemptLog[],
   attemptLogsLoading: false,
+}));
+
+const traceStoreState = vi.hoisted(() => ({
+  traces: [] as TraceSession[],
 }));
 
 vi.mock("../../../query/requestLogs", () => ({
@@ -18,6 +23,12 @@ vi.mock("../../../query/requestLogs", () => ({
   useRequestAttemptLogsByTraceIdQuery: () => ({
     data: requestLogQueryState.attemptLogs,
     isFetching: requestLogQueryState.attemptLogsLoading,
+  }),
+}));
+
+vi.mock("../../../services/traceStore", () => ({
+  useTraceStore: () => ({
+    traces: traceStoreState.traces,
   }),
 }));
 
@@ -64,6 +75,10 @@ function setRequestLogQueryState(overrides: Partial<typeof requestLogQueryState>
   requestLogQueryState.attemptLogsLoading = overrides.attemptLogsLoading ?? false;
 }
 
+function setTraceStoreState(overrides: Partial<typeof traceStoreState> = {}) {
+  traceStoreState.traces = overrides.traces ?? [];
+}
+
 function expectMetricValue(label: string, value: string) {
   const labelNode = screen.getByText(label);
   const card = labelNode.parentElement as HTMLElement | null;
@@ -72,9 +87,16 @@ function expectMetricValue(label: string, value: string) {
 }
 
 describe("home/RequestLogDetailDialog", () => {
+  afterEach(() => {
+    setRequestLogQueryState();
+    setTraceStoreState();
+    vi.useRealTimers();
+  });
+
   it("renders loading state and closes via dialog close button", async () => {
     const onSelectLogId = vi.fn();
     setRequestLogQueryState({ selectedLogLoading: true });
+    setTraceStoreState({ traces: [] });
 
     render(<RequestLogDetailDialog selectedLogId={1} onSelectLogId={onSelectLogId} />);
 
@@ -88,6 +110,7 @@ describe("home/RequestLogDetailDialog", () => {
 
   it("renders metrics first and hides raw trace/query details", () => {
     setRequestLogQueryState({ selectedLog: createSelectedLog() });
+    setTraceStoreState({ traces: [] });
 
     render(<RequestLogDetailDialog selectedLogId={1} onSelectLogId={vi.fn()} />);
 
@@ -109,6 +132,7 @@ describe("home/RequestLogDetailDialog", () => {
 
   it("falls back to raw usage_json when JSON parsing fails without rendering raw json section", () => {
     setRequestLogQueryState({ selectedLog: createSelectedLog({ usage_json: "not-json" }) });
+    setTraceStoreState({ traces: [] });
 
     render(<RequestLogDetailDialog selectedLogId={1} onSelectLogId={vi.fn()} />);
 
@@ -116,8 +140,30 @@ describe("home/RequestLogDetailDialog", () => {
     expect(screen.getByText("关键指标")).toBeInTheDocument();
   });
 
+  it("shows audit semantics for excluded warmup-style records", () => {
+    setRequestLogQueryState({
+      selectedLog: createSelectedLog({
+        excluded_from_stats: true,
+        special_settings_json: JSON.stringify({ type: "warmup_intercept" }),
+        final_provider_id: 0,
+        final_provider_name: "Unknown",
+      }),
+    });
+    setTraceStoreState({ traces: [] });
+
+    render(<RequestLogDetailDialog selectedLogId={1} onSelectLogId={vi.fn()} />);
+
+    expect(screen.getByText("审计语义")).toBeInTheDocument();
+    expect(screen.getByText("Warmup")).toBeInTheDocument();
+    expect(screen.getByText("不计统计")).toBeInTheDocument();
+    expect(
+      screen.getByText("Warmup 命中后由网关直接应答，仅保留审计记录，不进入统计。")
+    ).toBeInTheDocument();
+  });
+
   it("renders not-found state when the selected log detail is unavailable", () => {
     setRequestLogQueryState({ selectedLog: null, selectedLogLoading: false });
+    setTraceStoreState({ traces: [] });
 
     render(<RequestLogDetailDialog selectedLogId={1} onSelectLogId={vi.fn()} />);
 
@@ -143,11 +189,12 @@ describe("home/RequestLogDetailDialog", () => {
         final_provider_name: null,
       }),
     });
+    setTraceStoreState({ traces: [] });
 
     render(<RequestLogDetailDialog selectedLogId={1} onSelectLogId={vi.fn()} />);
 
     expect(screen.queryByText("关键指标")).not.toBeInTheDocument();
-    expect(screen.getByText("最终供应商：未知")).toBeInTheDocument();
+    expect(screen.getByText("当前供应商：未知")).toBeInTheDocument();
     expect(screen.getByText("决策链")).toBeInTheDocument();
   });
 
@@ -191,11 +238,71 @@ describe("home/RequestLogDetailDialog", () => {
         },
       ],
     });
+    setTraceStoreState({ traces: [] });
 
     render(<RequestLogDetailDialog selectedLogId={1} onSelectLogId={vi.fn()} />);
 
     expect(screen.getByText("200 切换后成功")).toBeInTheDocument();
     expectMetricValue("缓存创建", "8 (1h)");
+  });
+
+  it("uses live trace provider and elapsed duration for in-progress logs", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-29T12:00:00.000Z"));
+
+    setRequestLogQueryState({
+      selectedLog: createSelectedLog({
+        status: null,
+        error_code: null,
+        duration_ms: 0,
+        final_provider_id: 0,
+        final_provider_name: "Unknown",
+      }),
+    });
+    setTraceStoreState({
+      traces: [
+        {
+          trace_id: "trace-1",
+          cli_key: "claude",
+          method: "POST",
+          path: "/v1/messages",
+          query: null,
+          requested_model: "claude-3",
+          first_seen_ms: Date.now() - 6500,
+          last_seen_ms: Date.now() - 100,
+          attempts: [
+            {
+              trace_id: "trace-1",
+              cli_key: "claude",
+              method: "POST",
+              path: "/v1/messages",
+              query: null,
+              requested_model: "claude-3",
+              attempt_index: 0,
+              provider_id: 42,
+              session_reuse: false,
+              provider_name: "Provider Live",
+              base_url: "https://provider-live.example.com",
+              outcome: "started",
+              status: null,
+              attempt_started_ms: 0,
+              attempt_duration_ms: 0,
+            },
+          ],
+        },
+      ],
+    });
+
+    render(<RequestLogDetailDialog selectedLogId={1} onSelectLogId={vi.fn()} />);
+
+    expect(screen.getByText("当前供应商：Provider Live")).toBeInTheDocument();
+    expectMetricValue("总耗时", "6.50s");
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expectMetricValue("总耗时", "7.50s");
   });
 
   it("uses base cache creation tokens and falls back to dash for missing timing metrics", () => {

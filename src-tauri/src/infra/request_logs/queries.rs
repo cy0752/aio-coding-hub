@@ -9,6 +9,9 @@ use std::collections::HashMap;
 use super::costing::cost_usd_from_femto;
 use super::{RequestLogDetail, RequestLogRouteHop, RequestLogSummary};
 
+const CLAUDE_VISIBLE_LOG_PATH: &str = "/v1/messages";
+const CLAUDE_VISIBLE_LOG_CONDITION: &str = "(cli_key != 'claude' OR path = '/v1/messages')";
+
 /// Common SELECT fields for request_logs queries (summary view).
 const REQUEST_LOG_SUMMARY_FIELDS: &str = "
   id,
@@ -16,6 +19,8 @@ const REQUEST_LOG_SUMMARY_FIELDS: &str = "
   cli_key,
   method,
   path,
+  excluded_from_stats,
+  special_settings_json,
   requested_model,
   status,
   error_code,
@@ -295,6 +300,8 @@ fn row_to_summary(row: &rusqlite::Row<'_>) -> Result<RequestLogSummary, rusqlite
         cli_key: row.get("cli_key")?,
         method: row.get("method")?,
         path: row.get("path")?,
+        excluded_from_stats: row.get::<_, i64>("excluded_from_stats").unwrap_or(0) != 0,
+        special_settings_json: row.get("special_settings_json")?,
         requested_model: row.get("requested_model")?,
         status: row.get("status")?,
         error_code: row.get("error_code")?,
@@ -384,14 +391,30 @@ pub fn list_recent(
     validate_cli_key(cli_key)?;
     let conn = db.open_connection()?;
 
-    let sql = format!("SELECT{}FROM request_logs WHERE cli_key = ?1 ORDER BY created_at_ms DESC, id DESC LIMIT ?2", REQUEST_LOG_SUMMARY_FIELDS);
+    let sql = if cli_key == "claude" {
+        format!(
+            "SELECT{}FROM request_logs WHERE cli_key = ?1 AND path = ?2 ORDER BY created_at_ms DESC, id DESC LIMIT ?3",
+            REQUEST_LOG_SUMMARY_FIELDS
+        )
+    } else {
+        format!(
+            "SELECT{}FROM request_logs WHERE cli_key = ?1 ORDER BY created_at_ms DESC, id DESC LIMIT ?2",
+            REQUEST_LOG_SUMMARY_FIELDS
+        )
+    };
     let mut stmt = conn
         .prepare(&sql)
         .map_err(|e| db_err!("failed to prepare query: {e}"))?;
 
-    let rows = stmt
-        .query_map(params![cli_key, limit as i64], row_to_summary)
-        .map_err(|e| db_err!("failed to list request_logs: {e}"))?;
+    let rows = if cli_key == "claude" {
+        stmt.query_map(
+            params![cli_key, CLAUDE_VISIBLE_LOG_PATH, limit as i64],
+            row_to_summary,
+        )
+    } else {
+        stmt.query_map(params![cli_key, limit as i64], row_to_summary)
+    }
+    .map_err(|e| db_err!("failed to list request_logs: {e}"))?;
 
     let mut items = Vec::new();
     for row in rows {
@@ -408,8 +431,8 @@ pub fn list_recent_all(
     let conn = db.open_connection()?;
 
     let sql = format!(
-        "SELECT{}FROM request_logs ORDER BY created_at_ms DESC, id DESC LIMIT ?1",
-        REQUEST_LOG_SUMMARY_FIELDS
+        "SELECT{}FROM request_logs WHERE {} ORDER BY created_at_ms DESC, id DESC LIMIT ?1",
+        REQUEST_LOG_SUMMARY_FIELDS, CLAUDE_VISIBLE_LOG_CONDITION
     );
     let mut stmt = conn
         .prepare(&sql)
@@ -437,17 +460,30 @@ pub fn list_after_id(
     let conn = db.open_connection()?;
 
     let after_id = after_id.max(0);
-    let sql = format!(
-        "SELECT{}FROM request_logs WHERE cli_key = ?1 AND id > ?2 ORDER BY id ASC LIMIT ?3",
-        REQUEST_LOG_SUMMARY_FIELDS
-    );
+    let sql = if cli_key == "claude" {
+        format!(
+            "SELECT{}FROM request_logs WHERE cli_key = ?1 AND path = ?2 AND id > ?3 ORDER BY id ASC LIMIT ?4",
+            REQUEST_LOG_SUMMARY_FIELDS
+        )
+    } else {
+        format!(
+            "SELECT{}FROM request_logs WHERE cli_key = ?1 AND id > ?2 ORDER BY id ASC LIMIT ?3",
+            REQUEST_LOG_SUMMARY_FIELDS
+        )
+    };
     let mut stmt = conn
         .prepare(&sql)
         .map_err(|e| db_err!("failed to prepare query: {e}"))?;
 
-    let rows = stmt
-        .query_map(params![cli_key, after_id, limit as i64], row_to_summary)
-        .map_err(|e| db_err!("failed to list request_logs: {e}"))?;
+    let rows = if cli_key == "claude" {
+        stmt.query_map(
+            params![cli_key, CLAUDE_VISIBLE_LOG_PATH, after_id, limit as i64],
+            row_to_summary,
+        )
+    } else {
+        stmt.query_map(params![cli_key, after_id, limit as i64], row_to_summary)
+    }
+    .map_err(|e| db_err!("failed to list request_logs: {e}"))?;
 
     let mut items = Vec::new();
     for row in rows {
@@ -466,8 +502,8 @@ pub fn list_after_id_all(
 
     let after_id = after_id.max(0);
     let sql = format!(
-        "SELECT{}FROM request_logs WHERE id > ?1 ORDER BY id ASC LIMIT ?2",
-        REQUEST_LOG_SUMMARY_FIELDS
+        "SELECT{}FROM request_logs WHERE {} AND id > ?1 ORDER BY id ASC LIMIT ?2",
+        REQUEST_LOG_SUMMARY_FIELDS, CLAUDE_VISIBLE_LOG_CONDITION
     );
     let mut stmt = conn
         .prepare(&sql)
@@ -488,8 +524,8 @@ pub fn list_after_id_all(
 pub fn get_by_id(db: &db::Db, log_id: i64) -> crate::shared::error::AppResult<RequestLogDetail> {
     let conn = db.open_connection()?;
     let sql = format!(
-        "SELECT{}FROM request_logs WHERE id = ?1",
-        REQUEST_LOG_DETAIL_FIELDS
+        "SELECT{}FROM request_logs WHERE id = ?1 AND {}",
+        REQUEST_LOG_DETAIL_FIELDS, CLAUDE_VISIBLE_LOG_CONDITION
     );
     let mut item = conn
         .query_row(&sql, params![log_id], row_to_detail)
@@ -512,8 +548,8 @@ pub fn get_by_trace_id(
 
     let conn = db.open_connection()?;
     let sql = format!(
-        "SELECT{}FROM request_logs WHERE trace_id = ?1",
-        REQUEST_LOG_DETAIL_FIELDS
+        "SELECT{}FROM request_logs WHERE trace_id = ?1 AND {}",
+        REQUEST_LOG_DETAIL_FIELDS, CLAUDE_VISIBLE_LOG_CONDITION
     );
     let mut item = conn
         .query_row(&sql, params![trace_id], row_to_detail)
@@ -528,10 +564,31 @@ pub fn get_by_trace_id(
 #[cfg(test)]
 mod tests {
     use super::{
-        final_provider_from_attempts, load_source_provider_info_map, parse_attempts,
-        route_from_attempts, start_provider_from_attempts,
+        final_provider_from_attempts, get_by_id, get_by_trace_id, list_after_id_all, list_recent,
+        list_recent_all, load_source_provider_info_map, parse_attempts, route_from_attempts,
+        start_provider_from_attempts,
     };
+    use crate::db;
     use rusqlite::Connection;
+    use tempfile::tempdir;
+
+    fn seed_request_log(conn: &Connection, id: i64, trace_id: &str, cli_key: &str, path: &str) {
+        conn.execute(
+            r#"
+INSERT INTO request_logs (
+  id, trace_id, cli_key, session_id, method, path, query, excluded_from_stats,
+  special_settings_json, status, error_code, duration_ms, ttfb_ms, attempts_json,
+  input_tokens, output_tokens, total_tokens, cache_read_input_tokens,
+  cache_creation_input_tokens, cache_creation_5m_input_tokens,
+  cache_creation_1h_input_tokens, usage_json, requested_model, cost_usd_femto,
+  cost_multiplier, created_at_ms, created_at, final_provider_id
+) VALUES (?1, ?2, ?3, NULL, 'POST', ?4, NULL, 0, NULL, 200, NULL, 10, 5, '[]',
+  NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'model', NULL, 1.0, ?5, ?6, 0)
+"#,
+            rusqlite::params![id, trace_id, cli_key, path, id * 1000, id],
+        )
+        .unwrap();
+    }
 
     #[test]
     fn route_excludes_skipped_attempts() {
@@ -648,5 +705,73 @@ INSERT INTO providers (id, name, source_provider_id) VALUES (12, 'Claude Bridge'
             Some("OpenAI Primary")
         );
         assert!(!info.contains_key(&99));
+    }
+
+    #[test]
+    fn list_queries_hide_claude_non_messages_rows() {
+        let dir = tempdir().unwrap();
+        let db_path = dir.path().join("request-logs.db");
+        let db = db::init_for_tests(&db_path).unwrap();
+        let conn = db.open_connection().unwrap();
+
+        seed_request_log(&conn, 1, "trace-claude-messages", "claude", "/v1/messages");
+        seed_request_log(
+            &conn,
+            2,
+            "trace-claude-count",
+            "claude",
+            "/v1/messages/count_tokens",
+        );
+        seed_request_log(&conn, 3, "trace-codex", "codex", "/v1/responses");
+        drop(conn);
+
+        let all = list_recent_all(&db, 10).unwrap();
+        assert_eq!(
+            all.iter().map(|item| item.id).collect::<Vec<_>>(),
+            vec![3, 1]
+        );
+
+        let claude = list_recent(&db, "claude", 10).unwrap();
+        assert_eq!(
+            claude.iter().map(|item| item.id).collect::<Vec<_>>(),
+            vec![1]
+        );
+
+        let after = list_after_id_all(&db, 1, 10).unwrap();
+        assert_eq!(
+            after.iter().map(|item| item.id).collect::<Vec<_>>(),
+            vec![3]
+        );
+    }
+
+    #[test]
+    fn detail_queries_hide_claude_non_messages_rows() {
+        let dir = tempdir().unwrap();
+        let db_path = dir.path().join("request-logs.db");
+        let db = db::init_for_tests(&db_path).unwrap();
+        let conn = db.open_connection().unwrap();
+
+        seed_request_log(&conn, 1, "trace-claude-messages", "claude", "/v1/messages");
+        seed_request_log(
+            &conn,
+            2,
+            "trace-claude-count",
+            "claude",
+            "/v1/messages/count_tokens",
+        );
+        seed_request_log(&conn, 3, "trace-codex", "codex", "/v1/responses");
+        drop(conn);
+
+        let visible = get_by_id(&db, 1).unwrap();
+        assert_eq!(visible.id, 1);
+
+        let hidden = get_by_id(&db, 2).unwrap_err().to_string();
+        assert!(hidden.contains("request_log not found"));
+
+        let hidden_by_trace = get_by_trace_id(&db, "trace-claude-count").unwrap();
+        assert!(hidden_by_trace.is_none());
+
+        let visible_by_trace = get_by_trace_id(&db, "trace-codex").unwrap();
+        assert_eq!(visible_by_trace.as_ref().map(|item| item.id), Some(3));
     }
 }

@@ -7,6 +7,8 @@ export type RequestLogSummary = {
   cli_key: CliKey;
   method: string;
   path: string;
+  excluded_from_stats?: boolean;
+  special_settings_json?: string | null;
   requested_model: string | null;
   status: number | null;
   error_code: string | null;

@@ -5,9 +5,9 @@
 import { GatewayErrorCodes, getGatewayErrorShortLabel } from "../../constants/gatewayErrorCodes";
 import type { CliKey } from "../../services/providers";
 import type { RequestLogRouteHop } from "../../services/requestLogs";
+import type { TraceSession } from "../../services/traceStore";
 import { Tooltip } from "../../ui/Tooltip";
 import { RouteTooltipContent } from "./RouteTooltipContent";
-
 const CLIENT_ABORT_ERROR_CODES: ReadonlySet<string> = new Set([
   GatewayErrorCodes.STREAM_ABORTED,
   GatewayErrorCodes.REQUEST_ABORTED,
@@ -17,6 +17,170 @@ const STATUS_TEXT_UNKNOWN = "状态未知";
 
 const SESSION_REUSE_TOOLTIP =
   "同一 session_id 在 5 分钟 TTL 内优先复用上一次成功 provider，减少抖动/提升缓存命中";
+
+type RequestLogAuditInput = {
+  cli_key: CliKey | string;
+  path: string;
+  excluded_from_stats?: boolean | null;
+  special_settings_json?: string | null;
+  error_code?: string | null;
+};
+
+type RequestLogProgressInput = {
+  status: number | null;
+  error_code?: string | null;
+};
+
+export type RequestLogAuditTag = {
+  label: string;
+  className: string;
+  title?: string;
+};
+
+export type RequestLogAuditMeta = {
+  muted: boolean;
+  summary: string | null;
+  tags: RequestLogAuditTag[];
+  providerFallbackText: string | null;
+};
+
+type ParsedRequestLogSpecialSetting = {
+  type?: string;
+  reason?: string;
+};
+
+function parseRequestLogSpecialSettings(
+  specialSettingsJson: string | null | undefined
+): ParsedRequestLogSpecialSetting[] {
+  if (!specialSettingsJson) return [];
+
+  try {
+    const parsed = JSON.parse(specialSettingsJson) as unknown;
+    if (Array.isArray(parsed)) {
+      return parsed.filter(isParsedRequestLogSpecialSetting);
+    }
+    return isParsedRequestLogSpecialSetting(parsed) ? [parsed] : [];
+  } catch {
+    return [];
+  }
+}
+
+function isParsedRequestLogSpecialSetting(value: unknown): value is ParsedRequestLogSpecialSetting {
+  return typeof value === "object" && value !== null;
+}
+
+function auditTag(label: string, className: string, title?: string): RequestLogAuditTag {
+  return { label, className, title };
+}
+
+export function buildRequestLogAuditMeta(log: RequestLogAuditInput): RequestLogAuditMeta {
+  const settings = parseRequestLogSpecialSettings(log.special_settings_json);
+  const settingTypes = new Set(settings.map((item) => item.type).filter(Boolean));
+  const isWarmupIntercept = settingTypes.has("warmup_intercept");
+  const isCliProxyGuard = settingTypes.has("cli_proxy_guard");
+  const isClientAbort =
+    !!(log.error_code && CLIENT_ABORT_ERROR_CODES.has(log.error_code)) ||
+    settingTypes.has("client_abort");
+  const excludedFromStats = !!log.excluded_from_stats;
+
+  const tags: RequestLogAuditTag[] = [];
+
+  if (isWarmupIntercept) {
+    tags.push(
+      auditTag(
+        "Warmup",
+        "bg-sky-50/80 text-sky-700 ring-1 ring-inset ring-sky-500/10 dark:bg-sky-500/15 dark:text-sky-200 dark:ring-sky-400/20",
+        "Anthropic warmup 命中后直接由网关拦截"
+      )
+    );
+  }
+
+  if (isCliProxyGuard) {
+    tags.push(
+      auditTag(
+        "代理守卫",
+        "bg-orange-50/80 text-orange-700 ring-1 ring-inset ring-orange-500/10 dark:bg-orange-500/15 dark:text-orange-200 dark:ring-orange-400/20",
+        "CLI 代理守卫提前处理了这次请求"
+      )
+    );
+  }
+
+  if (isClientAbort) {
+    tags.push(
+      auditTag(
+        "客户端中断",
+        "bg-amber-50/80 text-amber-700 ring-1 ring-inset ring-amber-500/10 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-400/20",
+        "请求已被客户端主动中断"
+      )
+    );
+  }
+
+  if (excludedFromStats) {
+    tags.push(
+      auditTag(
+        "不计统计",
+        "bg-slate-100/90 text-slate-600 ring-1 ring-inset ring-slate-500/10 dark:bg-slate-700/70 dark:text-slate-200 dark:ring-slate-500/20",
+        "这条记录保留在审计列表中，但不会进入 usage/cost/provider 聚合"
+      )
+    );
+  }
+
+  let summary: string | null = null;
+  if (isWarmupIntercept) {
+    summary = "Warmup 命中后由网关直接应答，仅保留审计记录，不进入统计。";
+  } else if (isCliProxyGuard) {
+    summary = "这次请求由 CLI 代理守卫提前处理，保留为审计行。";
+  } else if (isClientAbort) {
+    summary = "客户端中途中断了请求，系统保留这条审计记录但不计入统计。";
+  } else if (excludedFromStats) {
+    summary = "这条记录仅用于审计可见性，不参与统计聚合。";
+  }
+
+  return {
+    muted: tags.length > 0,
+    summary,
+    tags,
+    providerFallbackText: isWarmupIntercept ? "Warmup" : isCliProxyGuard ? "CLI 守卫" : null,
+  };
+}
+
+export function isPersistedRequestLogInProgress(log: RequestLogProgressInput) {
+  return log.status == null && (log.error_code ?? null) == null;
+}
+
+export type LiveTraceProvider = {
+  providerId: number | null;
+  providerName: string;
+};
+
+export function resolveLiveTraceProvider(
+  trace: TraceSession | null | undefined
+): LiveTraceProvider | null {
+  const attempts = trace?.attempts;
+  if (!attempts?.length) return null;
+
+  let best: (typeof attempts)[number] | null = null;
+  for (const attempt of attempts) {
+    const name = attempt.provider_name?.trim();
+    if (!name || name === "Unknown") continue;
+    if (!best || attempt.attempt_index > best.attempt_index) {
+      best = attempt;
+    }
+  }
+  if (!best) return null;
+  return {
+    providerId: typeof best.provider_id === "number" ? best.provider_id : null,
+    providerName: best.provider_name!.trim(),
+  };
+}
+
+export function resolveLiveTraceDurationMs(
+  trace: TraceSession | null | undefined,
+  nowMs = Date.now()
+) {
+  if (!trace) return null;
+  return Math.max(0, nowMs - trace.first_seen_ms);
+}
 
 export function getErrorCodeLabel(errorCode: string) {
   return getGatewayErrorShortLabel(errorCode);

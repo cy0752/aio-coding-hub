@@ -6,6 +6,7 @@ import { memo, useRef, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cliBadgeToneStatic, cliShortLabel } from "../../constants/clis";
+import { useNowMs } from "../../hooks/useNowMs";
 import type { RequestLogSummary } from "../../services/requestLogs";
 import type { TraceSession } from "../../services/traceStore";
 import { Button } from "../../ui/Button";
@@ -26,14 +27,26 @@ import {
   sanitizeTtfbMs,
 } from "../../utils/formatters";
 import {
+  buildRequestLogAuditMeta,
   buildRequestRouteMeta,
   computeEffectiveInputTokens,
   computeStatusBadge,
   FreeBadge,
   getErrorCodeLabel,
+  isPersistedRequestLogInProgress,
+  resolveLiveTraceDurationMs,
+  resolveLiveTraceProvider,
   SessionReuseBadge,
 } from "./HomeLogShared";
-import { Clock, CheckCircle2, XCircle, Server, RefreshCw, ArrowUpRight } from "lucide-react";
+import {
+  Clock,
+  CheckCircle2,
+  XCircle,
+  Server,
+  RefreshCw,
+  ArrowUpRight,
+  Loader2,
+} from "lucide-react";
 import { RealtimeTraceCards } from "./RealtimeTraceCards";
 import { CliBrandIcon } from "./CliBrandIcon";
 import { buildPreviewRequestLogs, buildPreviewTraces } from "./previewData";
@@ -99,6 +112,8 @@ function mergeTraceWithRequestLog(
 type RequestLogCardProps = {
   compactMode: boolean;
   log: RequestLogSummary;
+  liveTrace?: TraceSession;
+  nowMs: number;
   isSelected: boolean;
   showCustomTooltip: boolean;
   onSelectLogId: (id: number | null) => void;
@@ -108,24 +123,36 @@ type RequestLogCardProps = {
 const RequestLogCard = memo(function RequestLogCard({
   compactMode,
   log,
+  liveTrace,
+  nowMs,
   isSelected,
   showCustomTooltip,
   onSelectLogId,
   formatUnixSeconds,
 }: RequestLogCardProps) {
+  const auditMeta = buildRequestLogAuditMeta(log);
+  const isInProgress = isPersistedRequestLogInProgress(log);
+  const liveProvider = resolveLiveTraceProvider(liveTrace);
+  const displayDurationMs =
+    isInProgress && liveTrace
+      ? (resolveLiveTraceDurationMs(liveTrace, nowMs) ?? log.duration_ms)
+      : log.duration_ms;
   const statusBadge = computeStatusBadge({
     status: log.status,
     errorCode: log.error_code,
+    inProgress: isInProgress,
     hasFailover: log.has_failover,
   });
 
   const providerText =
-    log.final_provider_id === 0 ||
+    (isInProgress && liveProvider ? liveProvider.providerName : null) ??
+    auditMeta.providerFallbackText ??
+    (log.final_provider_id === 0 ||
     !log.final_provider_name ||
     log.final_provider_name.trim().length === 0 ||
     log.final_provider_name === "Unknown"
       ? "未知"
-      : log.final_provider_name;
+      : log.final_provider_name);
 
   const routeMeta = buildRequestRouteMeta({
     route: log.route,
@@ -142,10 +169,10 @@ const RequestLogCard = memo(function RequestLogCard({
   const cliLabel = cliShortLabel(log.cli_key);
   const cliTone = cliBadgeToneStatic(log.cli_key);
 
-  const ttfbMs = sanitizeTtfbMs(log.ttfb_ms, log.duration_ms);
+  const ttfbMs = sanitizeTtfbMs(log.ttfb_ms, displayDurationMs);
   const outputTokensPerSecond = computeOutputTokensPerSecond(
     log.output_tokens,
-    log.duration_ms,
+    displayDurationMs,
     ttfbMs
   );
 
@@ -192,7 +219,9 @@ const RequestLogCard = memo(function RequestLogCard({
           "relative transition-all duration-200 group/item mx-2 my-1.5 rounded-lg border",
           isSelected
             ? "bg-indigo-50/50 border-indigo-200/80 shadow-[0_0_0_1px_rgba(99,102,241,0.08),0_2px_8px_rgba(99,102,241,0.1)] dark:bg-indigo-950/30 dark:border-indigo-600/40 dark:shadow-[0_0_0_1px_rgba(99,102,241,0.15),0_2px_8px_rgba(99,102,241,0.12)]"
-            : "bg-white/80 border-slate-200/60 hover:bg-slate-50/80 hover:border-slate-300/60 hover:shadow-[0_2px_8px_rgba(15,23,42,0.06)] dark:bg-slate-800/80 dark:border-slate-700/60 dark:hover:bg-slate-750/80 dark:hover:border-slate-600/60 dark:hover:shadow-[0_2px_8px_rgba(0,0,0,0.2)]"
+            : auditMeta.muted
+              ? "bg-slate-50/85 border-slate-200/70 hover:bg-slate-100/85 hover:border-slate-300/70 dark:bg-slate-800/70 dark:border-slate-700/80 dark:hover:bg-slate-800/90 dark:hover:border-slate-600/80"
+              : "bg-white/80 border-slate-200/60 hover:bg-slate-50/80 hover:border-slate-300/60 hover:shadow-[0_2px_8px_rgba(15,23,42,0.06)] dark:bg-slate-800/80 dark:border-slate-700/60 dark:hover:bg-slate-750/80 dark:hover:border-slate-600/60 dark:hover:shadow-[0_2px_8px_rgba(0,0,0,0.2)]"
         )}
       >
         {/* Selection indicator */}
@@ -214,7 +243,9 @@ const RequestLogCard = memo(function RequestLogCard({
               )}
               title={statusBadge.title}
             >
-              {statusBadge.isError ? (
+              {isInProgress ? (
+                <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+              ) : statusBadge.isError ? (
                 <XCircle className="h-3 w-3 shrink-0" />
               ) : (
                 <CheckCircle2 className="h-3 w-3 shrink-0" />
@@ -255,12 +286,31 @@ const RequestLogCard = memo(function RequestLogCard({
               </span>
             )}
 
+            {auditMeta.tags.map((tag) => (
+              <span
+                key={tag.label}
+                className={cn(
+                  "shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold",
+                  tag.className
+                )}
+                title={tag.title}
+              >
+                {tag.label}
+              </span>
+            ))}
+
             <span className="ml-auto flex w-[150px] shrink-0 items-center justify-end gap-1.5 text-xs text-slate-400 dark:text-slate-500 whitespace-nowrap">
               {log.session_reuse && <SessionReuseBadge showCustomTooltip={showCustomTooltip} />}
               <Clock className="h-3 w-3 shrink-0" />
               {formatUnixSeconds(log.created_at)}
             </span>
           </div>
+
+          {!compactMode && auditMeta.summary ? (
+            <div className="mb-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+              {auditMeta.summary}
+            </div>
+          ) : null}
 
           {!compactMode && (
             <div className="flex items-start gap-3 text-[11px]">
@@ -366,7 +416,7 @@ const RequestLogCard = memo(function RequestLogCard({
                 <div className="flex items-center gap-1 h-4" title="Duration">
                   <span className="text-slate-400/80 dark:text-slate-500/80 shrink-0">耗时</span>
                   <span className="font-mono tabular-nums text-slate-700 dark:text-slate-200 truncate">
-                    {formatDurationMs(log.duration_ms)}
+                    {formatDurationMs(displayDurationMs)}
                   </span>
                 </div>
                 <div
@@ -476,19 +526,46 @@ export function HomeRequestLogsPanel({
           : `共 ${displayedRequestLogs.length} 条`);
   const realtimeTraceCandidates = useMemo(() => {
     const logsByTraceId = new Map<string, RequestLogSummary>();
+    const claudePersistedTraceIds = new Set<string>();
     for (const log of displayedRequestLogs) {
       const traceId = log.trace_id?.trim();
-      if (!traceId || logsByTraceId.has(traceId)) continue;
-      logsByTraceId.set(traceId, log);
+      if (!traceId) continue;
+      if (!logsByTraceId.has(traceId)) {
+        logsByTraceId.set(traceId, log);
+      }
+      if (log.cli_key === "claude") {
+        claudePersistedTraceIds.add(traceId);
+      }
     }
 
     const nowMs = Date.now();
     return displayedTraces
+      .filter(
+        (trace) => !(trace.cli_key === "claude" && claudePersistedTraceIds.has(trace.trace_id))
+      )
       .map((trace) => mergeTraceWithRequestLog(trace, logsByTraceId.get(trace.trace_id)))
       .filter((t) => nowMs - t.first_seen_ms < 15 * 60 * 1000)
       .sort((a, b) => b.first_seen_ms - a.first_seen_ms)
       .slice(0, 20);
   }, [displayedRequestLogs, displayedTraces]);
+  const tracesByTraceId = useMemo(() => {
+    const map = new Map<string, TraceSession>();
+    for (const trace of displayedTraces) {
+      const traceId = trace.trace_id?.trim();
+      if (!traceId || map.has(traceId)) continue;
+      map.set(traceId, trace);
+    }
+    return map;
+  }, [displayedTraces]);
+  const hasLiveInProgressRequestLogs = useMemo(
+    () =>
+      displayedRequestLogs.some((log) => {
+        if (!isPersistedRequestLogInProgress(log)) return false;
+        return tracesByTraceId.has(log.trace_id);
+      }),
+    [displayedRequestLogs, tracesByTraceId]
+  );
+  const nowMs = useNowMs(hasLiveInProgressRequestLogs, 250);
 
   return (
     <Card padding="sm" className="flex flex-col gap-3 lg:col-span-7 h-full">
@@ -549,6 +626,8 @@ export function HomeRequestLogsPanel({
           formatUnixSeconds={formatUnixSecondsStable}
           showCustomTooltip={showCustomTooltip}
           compactMode={effectiveCompactMode}
+          tracesByTraceId={tracesByTraceId}
+          nowMs={nowMs}
           requestLogsAvailable={requestLogsAvailable}
           requestLogs={displayedRequestLogs}
           requestLogsLoading={requestLogsLoading}
@@ -567,6 +646,8 @@ type RequestLogsListProps = {
   formatUnixSeconds: (ts: number) => string;
   showCustomTooltip: boolean;
   compactMode: boolean;
+  tracesByTraceId: Map<string, TraceSession>;
+  nowMs: number;
   requestLogsAvailable: boolean | null;
   requestLogs: RequestLogSummary[];
   requestLogsLoading: boolean;
@@ -580,6 +661,8 @@ const RequestLogsList = memo(function RequestLogsList({
   formatUnixSeconds,
   showCustomTooltip,
   compactMode,
+  tracesByTraceId,
+  nowMs,
   requestLogsAvailable,
   requestLogs,
   requestLogsLoading,
@@ -603,17 +686,23 @@ const RequestLogsList = memo(function RequestLogsList({
   // Non-virtualized fallback for small lists
   const plainList = !useVirtual && requestLogs.length > 0 && (
     <>
-      {requestLogs.map((log) => (
-        <RequestLogCard
-          compactMode={compactMode}
-          key={log.id}
-          log={log}
-          isSelected={selectedLogId === log.id}
-          showCustomTooltip={showCustomTooltip}
-          onSelectLogId={onSelectLogId}
-          formatUnixSeconds={formatUnixSeconds}
-        />
-      ))}
+      {requestLogs.map((log) => {
+        const trace = tracesByTraceId.get(log.trace_id);
+        const liveNow = trace && isPersistedRequestLogInProgress(log) ? nowMs : 0;
+        return (
+          <RequestLogCard
+            compactMode={compactMode}
+            key={log.id}
+            log={log}
+            liveTrace={trace}
+            nowMs={liveNow}
+            isSelected={selectedLogId === log.id}
+            showCustomTooltip={showCustomTooltip}
+            onSelectLogId={onSelectLogId}
+            formatUnixSeconds={formatUnixSeconds}
+          />
+        );
+      })}
     </>
   );
 
@@ -657,22 +746,25 @@ const RequestLogsList = memo(function RequestLogsList({
               transform: `translateY(${virtualItems[0]?.start ?? 0}px)`,
             }}
           >
-            {virtualItems.map((virtualRow) => (
-              <div
-                key={requestLogs[virtualRow.index].id}
-                data-index={virtualRow.index}
-                ref={virtualizer.measureElement}
-              >
-                <RequestLogCard
-                  compactMode={compactMode}
-                  log={requestLogs[virtualRow.index]}
-                  isSelected={selectedLogId === requestLogs[virtualRow.index].id}
-                  showCustomTooltip={showCustomTooltip}
-                  onSelectLogId={onSelectLogId}
-                  formatUnixSeconds={formatUnixSeconds}
-                />
-              </div>
-            ))}
+            {virtualItems.map((virtualRow) => {
+              const vLog = requestLogs[virtualRow.index];
+              const vTrace = tracesByTraceId.get(vLog.trace_id);
+              const vNow = vTrace && isPersistedRequestLogInProgress(vLog) ? nowMs : 0;
+              return (
+                <div key={vLog.id} data-index={virtualRow.index} ref={virtualizer.measureElement}>
+                  <RequestLogCard
+                    compactMode={compactMode}
+                    log={vLog}
+                    liveTrace={vTrace}
+                    nowMs={vNow}
+                    isSelected={selectedLogId === vLog.id}
+                    showCustomTooltip={showCustomTooltip}
+                    onSelectLogId={onSelectLogId}
+                    formatUnixSeconds={formatUnixSeconds}
+                  />
+                </div>
+              );
+            })}
           </div>
         </div>
       ) : (

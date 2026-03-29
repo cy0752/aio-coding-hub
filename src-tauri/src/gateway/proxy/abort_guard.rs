@@ -17,6 +17,7 @@ pub(super) struct RequestAbortGuard {
     cli_key: String,
     method: String,
     path: String,
+    observe: bool,
     query: Option<String>,
     session_id: Option<String>,
     requested_model: Option<String>,
@@ -37,6 +38,7 @@ impl RequestAbortGuard {
         cli_key: String,
         method: String,
         path: String,
+        observe: bool,
         query: Option<String>,
         session_id: Option<String>,
         requested_model: Option<String>,
@@ -52,6 +54,7 @@ impl RequestAbortGuard {
             cli_key,
             method,
             path,
+            observe,
             query,
             session_id,
             requested_model,
@@ -77,6 +80,9 @@ impl Drop for RequestAbortGuard {
         if !self.armed {
             return;
         }
+        if !self.observe {
+            return;
+        }
 
         let duration_ms = self.started.elapsed().as_millis();
         let abort_attempts: Vec<FailoverAttempt> = self.in_flight_attempt.iter().cloned().collect();
@@ -86,6 +92,7 @@ impl Drop for RequestAbortGuard {
             cli_key: self.cli_key.as_str(),
             method: self.method.as_str(),
             path: self.path.as_str(),
+            observe: self.observe,
             query: self.query.as_deref(),
             excluded_from_stats: false,
             status: None,

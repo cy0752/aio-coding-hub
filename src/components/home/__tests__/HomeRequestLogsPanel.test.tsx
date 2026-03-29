@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -9,6 +9,7 @@ import { HomeRequestLogsPanel } from "../HomeRequestLogsPanel";
 describe("components/home/HomeRequestLogsPanel", () => {
   afterEach(() => {
     localStorage.removeItem("home_request_logs_compact");
+    vi.useRealTimers();
   });
   it("renders traces + logs and supports refresh/select", () => {
     const traces: TraceSession[] = [
@@ -92,6 +93,7 @@ describe("components/home/HomeRequestLogsPanel", () => {
       <MemoryRouter>
         <HomeRequestLogsPanel
           showCustomTooltip={true}
+          compactModeOverride={false}
           traces={traces}
           requestLogs={requestLogs}
           requestLogsLoading={false}
@@ -117,6 +119,240 @@ describe("components/home/HomeRequestLogsPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /claude-3-opus/ }));
     expect(onSelectLogId).toHaveBeenCalledWith(1);
+  });
+
+  it("dedupes Claude realtime traces when the persisted request log already exists", () => {
+    const traces: TraceSession[] = [
+      {
+        trace_id: "t-log-claude",
+        cli_key: "claude",
+        method: "POST",
+        path: "/v1/messages",
+        query: null,
+        requested_model: "claude-3-opus",
+        first_seen_ms: Date.now() - 1000,
+        last_seen_ms: Date.now() - 200,
+        attempts: [],
+      },
+      {
+        trace_id: "t-live-codex",
+        cli_key: "codex",
+        method: "POST",
+        path: "/v1/responses",
+        query: null,
+        requested_model: "gpt-5",
+        first_seen_ms: Date.now() - 1000,
+        last_seen_ms: Date.now() - 200,
+        attempts: [],
+      },
+    ];
+
+    const requestLogs: RequestLogSummary[] = [
+      {
+        id: 1,
+        trace_id: "t-log-claude",
+        cli_key: "claude",
+        method: "POST",
+        path: "/v1/messages",
+        requested_model: "claude-3-opus",
+        status: null,
+        error_code: null,
+        duration_ms: 0,
+        ttfb_ms: null,
+        attempt_count: 0,
+        has_failover: false,
+        start_provider_id: 0,
+        start_provider_name: "Unknown",
+        final_provider_id: 0,
+        final_provider_name: "Unknown",
+        route: [],
+        session_reuse: false,
+        input_tokens: null,
+        output_tokens: null,
+        total_tokens: null,
+        cache_read_input_tokens: null,
+        cache_creation_input_tokens: null,
+        cache_creation_5m_input_tokens: null,
+        cache_creation_1h_input_tokens: null,
+        cost_usd: null,
+        cost_multiplier: 1,
+        created_at_ms: null,
+        created_at: Math.floor(Date.now() / 1000),
+      },
+    ];
+
+    render(
+      <MemoryRouter>
+        <HomeRequestLogsPanel
+          showCustomTooltip={true}
+          compactModeOverride={false}
+          traces={traces}
+          requestLogs={requestLogs}
+          requestLogsLoading={false}
+          requestLogsRefreshing={false}
+          requestLogsAvailable={true}
+          onRefreshRequestLogs={vi.fn()}
+          selectedLogId={null}
+          onSelectLogId={vi.fn()}
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.getAllByText("claude-3-opus")).toHaveLength(1);
+    expect(screen.getByText("gpt-5")).toBeInTheDocument();
+    expect(screen.getAllByText("进行中")).toHaveLength(2);
+  });
+
+  it("renders persisted in-progress request logs as ongoing rows", () => {
+    const requestLogs: RequestLogSummary[] = [
+      {
+        id: 11,
+        trace_id: "t-pending-claude",
+        cli_key: "claude",
+        method: "POST",
+        path: "/v1/messages",
+        requested_model: "claude-3-opus",
+        status: null,
+        error_code: null,
+        duration_ms: 0,
+        ttfb_ms: null,
+        attempt_count: 0,
+        has_failover: false,
+        start_provider_id: 0,
+        start_provider_name: "Unknown",
+        final_provider_id: 0,
+        final_provider_name: "Unknown",
+        route: [],
+        session_reuse: false,
+        input_tokens: null,
+        output_tokens: null,
+        total_tokens: null,
+        cache_read_input_tokens: null,
+        cache_creation_input_tokens: null,
+        cache_creation_5m_input_tokens: null,
+        cache_creation_1h_input_tokens: null,
+        cost_usd: null,
+        cost_multiplier: 1,
+        created_at_ms: null,
+        created_at: Math.floor(Date.now() / 1000),
+      },
+    ];
+
+    render(
+      <MemoryRouter>
+        <HomeRequestLogsPanel
+          showCustomTooltip={true}
+          traces={[]}
+          requestLogs={requestLogs}
+          requestLogsLoading={false}
+          requestLogsRefreshing={false}
+          requestLogsAvailable={true}
+          onRefreshRequestLogs={vi.fn()}
+          selectedLogId={null}
+          onSelectLogId={vi.fn()}
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText("进行中")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /claude-3-opus/ })).toBeInTheDocument();
+  });
+
+  it("uses live trace data to show current provider and elapsed duration for in-progress logs", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-29T12:00:00.000Z"));
+
+    const traces: TraceSession[] = [
+      {
+        trace_id: "t-live-provider",
+        cli_key: "claude",
+        method: "POST",
+        path: "/v1/messages",
+        query: null,
+        requested_model: "claude-3-opus",
+        first_seen_ms: Date.now() - 6500,
+        last_seen_ms: Date.now() - 100,
+        attempts: [
+          {
+            trace_id: "t-live-provider",
+            cli_key: "claude",
+            method: "POST",
+            path: "/v1/messages",
+            query: null,
+            requested_model: "claude-3-opus",
+            attempt_index: 0,
+            provider_id: 42,
+            session_reuse: false,
+            provider_name: "Provider Live",
+            base_url: "https://provider-live.example.com",
+            outcome: "started",
+            status: null,
+            attempt_started_ms: 0,
+            attempt_duration_ms: 0,
+          },
+        ],
+      },
+    ];
+
+    const requestLogs: RequestLogSummary[] = [
+      {
+        id: 12,
+        trace_id: "t-live-provider",
+        cli_key: "claude",
+        method: "POST",
+        path: "/v1/messages",
+        requested_model: "claude-3-opus",
+        status: null,
+        error_code: null,
+        duration_ms: 0,
+        ttfb_ms: null,
+        attempt_count: 0,
+        has_failover: false,
+        start_provider_id: 0,
+        start_provider_name: "Unknown",
+        final_provider_id: 0,
+        final_provider_name: "Unknown",
+        route: [],
+        session_reuse: false,
+        input_tokens: null,
+        output_tokens: null,
+        total_tokens: null,
+        cache_read_input_tokens: null,
+        cache_creation_input_tokens: null,
+        cache_creation_5m_input_tokens: null,
+        cache_creation_1h_input_tokens: null,
+        cost_usd: null,
+        cost_multiplier: 1,
+        created_at_ms: null,
+        created_at: Math.floor(Date.now() / 1000),
+      },
+    ];
+
+    render(
+      <MemoryRouter>
+        <HomeRequestLogsPanel
+          showCustomTooltip={true}
+          compactModeOverride={false}
+          traces={traces}
+          requestLogs={requestLogs}
+          requestLogsLoading={false}
+          requestLogsRefreshing={false}
+          requestLogsAvailable={true}
+          onRefreshRequestLogs={vi.fn()}
+          selectedLogId={null}
+          onSelectLogId={vi.fn()}
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText("Provider Live")).toBeInTheDocument();
+    expect(screen.getByText("6.50s")).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(screen.getByText("7.50s")).toBeInTheDocument();
   });
 
   it("covers status text branches + logs page navigation + rich log row variants", () => {

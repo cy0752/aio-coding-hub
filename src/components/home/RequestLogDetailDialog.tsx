@@ -2,6 +2,8 @@
 // - Used by `HomeRequestLogsPanel` to show the selected request log detail.
 // - Keeps the dialog UI isolated from the main overview panel to reduce file size and improve cohesion.
 
+import { useNowMs } from "../../hooks/useNowMs";
+import { useTraceStore } from "../../services/traceStore";
 import { cliBadgeTone, cliShortLabel } from "../../constants/clis";
 import {
   useRequestAttemptLogsByTraceIdQuery,
@@ -20,7 +22,13 @@ import {
 } from "../../utils/formatters";
 import { ProviderChainView } from "../ProviderChainView";
 import { resolveProviderLabel } from "../../pages/providers/baseUrl";
-import { computeStatusBadge } from "./HomeLogShared";
+import {
+  buildRequestLogAuditMeta,
+  computeStatusBadge,
+  isPersistedRequestLogInProgress,
+  resolveLiveTraceDurationMs,
+  resolveLiveTraceProvider,
+} from "./HomeLogShared";
 
 export type RequestLogDetailDialogProps = {
   selectedLogId: number | null;
@@ -31,6 +39,7 @@ export function RequestLogDetailDialog({
   selectedLogId,
   onSelectLogId,
 }: RequestLogDetailDialogProps) {
+  const { traces } = useTraceStore();
   const selectedLogQuery = useRequestLogDetailQuery(selectedLogId);
   const selectedLog = selectedLogQuery.data ?? null;
   const selectedLogLoading = selectedLogQuery.isFetching;
@@ -39,15 +48,33 @@ export function RequestLogDetailDialog({
   const attemptLogs = attemptLogsQuery.data ?? [];
   const attemptLogsLoading = attemptLogsQuery.isFetching;
 
-  const finalProviderText = resolveProviderLabel(
-    selectedLog?.final_provider_name,
-    selectedLog?.final_provider_id
-  );
+  const isInProgress = selectedLog ? isPersistedRequestLogInProgress(selectedLog) : false;
+  const liveTrace =
+    selectedLog && isInProgress
+      ? (traces.find((trace) => trace.trace_id === selectedLog.trace_id) ?? null)
+      : null;
+  const nowMs = useNowMs(isInProgress && liveTrace != null, 250);
+  const liveProvider = resolveLiveTraceProvider(liveTrace);
+  const providerName = isInProgress
+    ? (liveProvider?.providerName ?? selectedLog?.final_provider_name)
+    : selectedLog?.final_provider_name;
+  const providerId = isInProgress
+    ? (liveProvider?.providerId ?? selectedLog?.final_provider_id)
+    : selectedLog?.final_provider_id;
+  const finalProviderText = resolveProviderLabel(providerName, providerId);
+  const displayDurationMs =
+    selectedLog == null
+      ? 0
+      : isInProgress
+        ? (resolveLiveTraceDurationMs(liveTrace, nowMs) ?? selectedLog.duration_ms ?? 0)
+        : (selectedLog.duration_ms ?? 0);
+  const auditMeta = selectedLog ? buildRequestLogAuditMeta(selectedLog) : null;
 
   const statusBadge = selectedLog
     ? computeStatusBadge({
         status: selectedLog.status,
         errorCode: selectedLog.error_code,
+        inProgress: isInProgress,
         hasFailover: attemptLogs.length > 1,
       })
     : null;
@@ -63,7 +90,8 @@ export function RequestLogDetailDialog({
       selectedLog.cache_creation_1h_input_tokens != null ||
       selectedLog.cost_usd != null ||
       selectedLog.duration_ms != null ||
-      selectedLog.ttfb_ms != null);
+      selectedLog.ttfb_ms != null ||
+      (isInProgress && liveTrace != null));
   return (
     <Dialog
       open={selectedLogId != null}
@@ -82,6 +110,37 @@ export function RequestLogDetailDialog({
         </div>
       ) : (
         <div className="space-y-3">
+          {auditMeta && auditMeta.tags.length > 0 ? (
+            <Card padding="sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    审计语义
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    这条记录为什么会显示，以及为什么可能不计入统计。
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {auditMeta.tags.map((tag) => (
+                    <span
+                      key={tag.label}
+                      className={cn("rounded-full px-2.5 py-1 text-xs font-medium", tag.className)}
+                      title={tag.title}
+                    >
+                      {tag.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              {auditMeta.summary ? (
+                <div className="mt-3 text-sm text-slate-600 dark:text-slate-300">
+                  {auditMeta.summary}
+                </div>
+              ) : null}
+            </Card>
+          ) : null}
+
           {hasTokens ? (
             <Card padding="sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -108,11 +167,11 @@ export function RequestLogDetailDialog({
                 <MetricCard label="输出 Token" value={selectedLog.output_tokens} />
                 <MetricCard label="缓存创建" value={resolveCacheWriteValue(selectedLog)} />
                 <MetricCard label="缓存读取" value={selectedLog.cache_read_input_tokens} />
-                <MetricCard label="总耗时" value={formatDurationMs(selectedLog.duration_ms)} />
+                <MetricCard label="总耗时" value={formatDurationMs(displayDurationMs)} />
                 <MetricCard
                   label="TTFB"
                   value={(() => {
-                    const ttfbMs = sanitizeTtfbMs(selectedLog.ttfb_ms, selectedLog.duration_ms);
+                    const ttfbMs = sanitizeTtfbMs(selectedLog.ttfb_ms, displayDurationMs);
                     return ttfbMs != null ? formatDurationMs(ttfbMs) : "—";
                   })()}
                 />
@@ -121,8 +180,8 @@ export function RequestLogDetailDialog({
                   value={(() => {
                     const rate = computeOutputTokensPerSecond(
                       selectedLog.output_tokens,
-                      selectedLog.duration_ms,
-                      sanitizeTtfbMs(selectedLog.ttfb_ms, selectedLog.duration_ms)
+                      displayDurationMs,
+                      sanitizeTtfbMs(selectedLog.ttfb_ms, displayDurationMs)
                     );
                     return rate != null ? formatTokensPerSecond(rate) : "—";
                   })()}
@@ -152,7 +211,7 @@ export function RequestLogDetailDialog({
                   {cliShortLabel(selectedLog.cli_key)}
                 </span>
                 <span className="rounded-full bg-slate-100 dark:bg-slate-700 px-2 py-0.5">
-                  最终供应商：{finalProviderText || "未知"}
+                  {isInProgress ? "当前供应商" : "最终供应商"}：{finalProviderText || "未知"}
                 </span>
               </div>
             </div>

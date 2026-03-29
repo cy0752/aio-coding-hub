@@ -6,9 +6,9 @@ import {
   requestLogsListAll,
   type RequestLogSummary,
 } from "../services/requestLogs";
+import { isPersistedRequestLogInProgress } from "../components/home/HomeLogShared";
 import { requestLogsKeys } from "./keys";
 
-const CLAUDE_INTERNAL_COUNT_TOKENS_PATH = "/v1/messages/count_tokens";
 type RequestLogsListQueryResult = RequestLogSummary[] | null;
 type RequestLogsIncrementalPollResult = number | null;
 type RequestLogsIncrementalRefreshResult = {
@@ -18,15 +18,6 @@ type RequestLogsIncrementalRefreshResult = {
 
 function isRequestLogsQueryEnabled(enabled: boolean | undefined) {
   return enabled ?? true;
-}
-
-function shouldHideRequestLog(log: Pick<RequestLogSummary, "cli_key" | "path">) {
-  // Claude CLI 首次对话前会发内部 count_tokens 预请求；它失败时不该伪装成真实对话失败。
-  return log.cli_key === "claude" && log.path === CLAUDE_INTERNAL_COUNT_TOKENS_PATH;
-}
-
-function filterVisibleRequestLogs(rows: RequestLogSummary[]) {
-  return rows.filter((row) => !shouldHideRequestLog(row));
 }
 
 function requestLogCreatedAtMs(log: Pick<RequestLogSummary, "created_at" | "created_at_ms">) {
@@ -50,6 +41,11 @@ function computeRequestLogsCursorId(rows: RequestLogSummary[]) {
   return maxId;
 }
 
+function shouldUseFullRefresh(prev: RequestLogSummary[] | null | undefined) {
+  if (!prev?.length) return true;
+  return prev.some(isPersistedRequestLogInProgress);
+}
+
 function mergeRequestLogs(prev: RequestLogSummary[], incoming: RequestLogSummary[], limit: number) {
   const byId = new Map<number, RequestLogSummary>();
   for (const row of incoming) byId.set(row.id, row);
@@ -70,7 +66,7 @@ export function useRequestLogsListAllQuery(
     queryKey: requestLogsKeys.listAll(limit),
     queryFn: async () => {
       const rows = await requestLogsListAll(limit);
-      return rows == null ? null : filterVisibleRequestLogs(rows);
+      return rows;
     },
     enabled,
     placeholderData: keepPreviousData,
@@ -96,33 +92,32 @@ export function useRequestLogsIncrementalPollQuery(
       if (prev === undefined) return 0;
 
       const cursorId = prev?.length ? computeRequestLogsCursorId(prev) : 0;
+      const useFullRefresh = shouldUseFullRefresh(prev);
 
-      const items = cursorId
-        ? await requestLogsListAfterIdAll(cursorId, limit)
-        : await requestLogsListAll(limit);
+      const items = useFullRefresh
+        ? await requestLogsListAll(limit)
+        : await requestLogsListAfterIdAll(cursorId, limit);
 
       if (items == null) {
         queryClient.setQueryData(requestLogsKeys.listAll(limit), null);
         return null;
       }
 
-      const visibleItems = filterVisibleRequestLogs(items);
-
-      if (!cursorId) {
+      if (useFullRefresh) {
         queryClient.setQueryData(
           requestLogsKeys.listAll(limit),
-          visibleItems.slice().sort(sortRequestLogsDesc)
+          items.slice().sort(sortRequestLogsDesc)
         );
-        return visibleItems.length;
+        return items.length;
       }
 
-      if (visibleItems.length === 0) return 0;
+      if (items.length === 0) return 0;
 
       queryClient.setQueryData<RequestLogSummary[]>(requestLogsKeys.listAll(limit), (cur) =>
-        mergeRequestLogs(cur ?? [], visibleItems, limit)
+        mergeRequestLogs(cur ?? [], items, limit)
       );
 
-      return visibleItems.length;
+      return items.length;
     },
     enabled,
     refetchInterval: options?.refetchIntervalMs ?? false,
@@ -139,15 +134,14 @@ export function useRequestLogsIncrementalRefreshMutation(limit: number) {
         requestLogsKeys.listAll(limit)
       );
       const cursorId = prev?.length ? computeRequestLogsCursorId(prev) : 0;
+      const useFullRefresh = shouldUseFullRefresh(prev);
 
-      if (!cursorId) {
-        const rawItems = await requestLogsListAll(limit);
-        const items = rawItems == null ? null : filterVisibleRequestLogs(rawItems);
+      if (useFullRefresh) {
+        const items = await requestLogsListAll(limit);
         return { mode: "full" as const, items };
       }
 
-      const rawItems = await requestLogsListAfterIdAll(cursorId, limit);
-      const items = rawItems == null ? null : filterVisibleRequestLogs(rawItems);
+      const items = await requestLogsListAfterIdAll(cursorId, limit);
       return { mode: "incremental" as const, items };
     },
     onSuccess: (result) => {

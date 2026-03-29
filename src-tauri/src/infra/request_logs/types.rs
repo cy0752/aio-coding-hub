@@ -60,6 +60,8 @@ pub struct RequestLogSummary {
     pub cli_key: String,
     pub method: String,
     pub path: String,
+    pub excluded_from_stats: bool,
+    pub special_settings_json: Option<String>,
     pub requested_model: Option<String>,
     pub status: Option<i64>,
     pub error_code: Option<String>,

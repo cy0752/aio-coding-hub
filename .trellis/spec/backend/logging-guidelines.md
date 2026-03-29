@@ -63,3 +63,19 @@ user-visible request history.
 - If diagnostic retention is required, route it to a debug-only surface or a
   separately labeled log path so the main request history stays focused on
   user-visible work.
+
+## Lifecycle-Backed Request History
+
+If a CLI needs vendor-style "in progress" request history, the backend must own
+that lifecycle explicitly instead of asking the frontend to infer it from
+realtime events.
+
+- Create the user-visible request-log row at request start with the final
+  `trace_id`, then update that same row when the request finishes.
+- For Claude, only `/v1/messages` participates in this lifecycle. Helper paths
+  and probe traffic must still stay out of the default history.
+- Do not let the frontend render the same request twice through two different
+  contracts such as `gateway:request_start` cards plus `request_logs` rows.
+- If request-log rows are updated in place, the consumer side must support
+  seeing those updates. An `id > afterId` poll alone is insufficient while any
+  row is still in progress.

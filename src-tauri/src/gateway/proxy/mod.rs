@@ -1,5 +1,7 @@
 //! Usage: Gateway proxy module facade (exports the proxy handler + shared types).
 
+use axum::http::{HeaderMap, HeaderValue};
+
 mod abort_guard;
 mod caches;
 mod cli_proxy_guard;
@@ -29,13 +31,96 @@ pub(super) use types::ErrorCategory;
 pub(super) use handler::proxy_impl;
 
 const CLAUDE_COUNT_TOKENS_PATH: &str = "/v1/messages/count_tokens";
+const CLAUDE_LOGGED_MESSAGES_PATH: &str = "/v1/messages";
+const AIO_INTERNAL_FORWARD_HEADER: &str = "x-aio-gateway-forwarded";
+const AIO_INTERNAL_FORWARD_VALUE: &str = "aio-coding-hub";
 
 fn is_claude_count_tokens_request(cli_key: &str, forwarded_path: &str) -> bool {
     cli_key == "claude" && forwarded_path == CLAUDE_COUNT_TOKENS_PATH
 }
 
 fn should_observe_request(cli_key: &str, forwarded_path: &str) -> bool {
-    !is_claude_count_tokens_request(cli_key, forwarded_path)
+    cli_key != "claude" || forwarded_path == CLAUDE_LOGGED_MESSAGES_PATH
+}
+
+fn is_claude_probe_request(
+    forwarded_path: &str,
+    introspection_json: Option<&serde_json::Value>,
+) -> bool {
+    if forwarded_path != CLAUDE_LOGGED_MESSAGES_PATH {
+        return false;
+    }
+
+    let Some(root) = introspection_json else {
+        return false;
+    };
+    let Some(messages) = root.get("messages").and_then(|value| value.as_array()) else {
+        return false;
+    };
+    if messages.len() != 1 {
+        return false;
+    }
+
+    let Some(first_message) = messages.first().and_then(|value| value.as_object()) else {
+        return false;
+    };
+    if first_message.get("role").and_then(|value| value.as_str()) != Some("user") {
+        return false;
+    }
+
+    let Some(content) = first_message
+        .get("content")
+        .and_then(|value| value.as_str())
+    else {
+        return false;
+    };
+    let normalized = content.trim().to_ascii_lowercase();
+    normalized == "foo" || normalized == "count"
+}
+
+pub(super) fn is_internal_forwarded_request(headers: &HeaderMap) -> bool {
+    headers
+        .get(AIO_INTERNAL_FORWARD_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value == AIO_INTERNAL_FORWARD_VALUE)
+        .unwrap_or(false)
+}
+
+pub(super) fn mark_internal_forwarded_request(headers: &mut HeaderMap) {
+    headers.insert(
+        AIO_INTERNAL_FORWARD_HEADER,
+        HeaderValue::from_static(AIO_INTERNAL_FORWARD_VALUE),
+    );
+}
+
+fn compute_observe_request(
+    cli_key: &str,
+    forwarded_path: &str,
+    headers: &HeaderMap,
+    introspection_json: Option<&serde_json::Value>,
+) -> bool {
+    if !should_observe_request(cli_key, forwarded_path) {
+        return false;
+    }
+
+    if cli_key != "claude" {
+        return true;
+    }
+
+    !is_internal_forwarded_request(headers)
+        && !is_claude_probe_request(forwarded_path, introspection_json)
+}
+
+fn should_seed_in_progress_request_log(cli_key: &str, forwarded_path: &str, observe: bool) -> bool {
+    observe && cli_key == "claude" && forwarded_path == CLAUDE_LOGGED_MESSAGES_PATH
+}
+
+fn build_claude_probe_response_body() -> serde_json::Value {
+    serde_json::json!({
+        "input_tokens": 0
+    })
 }
 
 pub(super) struct RequestLogEnqueueArgs {

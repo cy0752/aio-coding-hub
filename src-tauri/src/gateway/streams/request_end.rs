@@ -15,6 +15,9 @@ pub(super) fn emit_request_event_and_spawn_request_log(
 ) {
     let duration_ms = ctx.started.elapsed().as_millis();
     let effective_error_category = finalize_circuit_and_session(ctx, error_code);
+    if !ctx.observe {
+        return;
+    }
     let (log_args, attempts) = RequestLogEnqueueArgs::from_stream_request_end_parts(
         ctx.trace_id.clone(),
         ctx.cli_key.clone(),

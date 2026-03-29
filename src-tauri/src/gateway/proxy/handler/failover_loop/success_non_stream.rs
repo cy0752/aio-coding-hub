@@ -839,6 +839,7 @@ pub(super) async fn handle_success_non_stream(
         cli_key: common.cli_key.as_str(),
         method: common.method_hint.as_str(),
         path: common.forwarded_path.as_str(),
+        observe: common.observe,
         query: common.query.as_deref(),
         excluded_from_stats: false,
         status: Some(status.as_u16()),

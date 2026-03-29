@@ -19,6 +19,7 @@ import {
   useRequestLogsListAllQuery,
 } from "../query/requestLogs";
 import { useWindowForeground } from "../hooks/useWindowForeground";
+import { useTraceStore } from "../services/traceStore";
 
 const LOGS_PAGE_LIMIT = 200;
 const AUTO_REFRESH_INTERVAL_MS = 2000;
@@ -57,6 +58,7 @@ function buildStatusPredicate(query: string): StatusPredicate | null {
 }
 
 export function LogsPage() {
+  const { traces } = useTraceStore();
   const showCustomTooltip = true;
   const foregroundActive = useDocumentVisibility();
 
@@ -243,7 +245,7 @@ export function LogsPage() {
         showCompactModeToggle={false}
         compactModeOverride={false}
         emptyStateTitle={activeFilterCount > 0 ? "没有符合筛选条件的代理记录" : "当前没有代理记录"}
-        traces={[]}
+        traces={traces}
         requestLogs={filteredLogs}
         requestLogsLoading={requestLogsLoading}
         requestLogsRefreshing={requestLogsRefreshing}
