@@ -30,6 +30,8 @@ pub(crate) async fn config_import(
     db_state: tauri::State<'_, DbInitState>,
     bundle: config_migrate::ConfigBundle,
 ) -> Result<config_migrate::ConfigImportResult, String> {
+    #[cfg(windows)]
+    let app_for_wsl = app.clone();
     let db = ensure_db_ready(app.clone(), db_state.inner()).await?;
     let result = blocking::run("config_import", move || {
         config_migrate::config_import(&app, &db, bundle)
@@ -38,7 +40,7 @@ pub(crate) async fn config_import(
     .map_err(|err| -> String { err.into() })?;
 
     #[cfg(windows)]
-    super::wsl::wsl_sync_trigger::trigger(app.clone());
+    super::wsl::wsl_sync_trigger::trigger(app_for_wsl);
 
     Ok(result)
 }
