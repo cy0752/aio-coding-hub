@@ -182,6 +182,12 @@ export const handlers = [
       source_provider_id:
         typeof input.sourceProviderId === "number" ? input.sourceProviderId : null,
       bridge_type: typeof input.bridgeType === "string" ? input.bridgeType : null,
+      stream_idle_timeout_seconds:
+        typeof input.streamIdleTimeoutSeconds === "number"
+          ? input.streamIdleTimeoutSeconds > 0
+            ? input.streamIdleTimeoutSeconds
+            : null
+          : (existing?.stream_idle_timeout_seconds ?? null),
     };
 
     setProvidersState(

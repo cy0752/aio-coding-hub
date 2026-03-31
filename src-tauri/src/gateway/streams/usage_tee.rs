@@ -130,6 +130,11 @@ where
         self.finalized = true;
 
         let usage = self.tracker.finalize();
+
+        // Propagate fake 200 detection from tracker to finalize context.
+        if self.tracker.fake_200_detected() {
+            self.ctx.fake_200_detected = true;
+        }
         let usage_metrics = usage.as_ref().map(|u| u.metrics.clone());
         let requested_model = self
             .ctx
@@ -187,7 +192,12 @@ where
                 }
                 this.tracker.ingest_chunk(chunk.as_ref());
                 if this.tracker.terminal_error_seen() {
-                    this.finalize(Some(GatewayErrorCode::StreamError.as_str()));
+                    let code = if this.tracker.fake_200_detected() {
+                        GatewayErrorCode::Fake200.as_str()
+                    } else {
+                        GatewayErrorCode::StreamError.as_str()
+                    };
+                    this.finalize(Some(code));
                     return Poll::Ready(None);
                 }
                 Poll::Ready(Some(Ok(chunk)))

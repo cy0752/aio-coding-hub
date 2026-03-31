@@ -35,6 +35,7 @@ export const GatewayErrorCodes = {
   REQUEST_LOG_WRITE_THROUGH_ON_BACKPRESSURE: "GW_REQUEST_LOG_WRITE_THROUGH_ON_BACKPRESSURE",
   REQUEST_LOG_WRITE_THROUGH_RATE_LIMITED: "GW_REQUEST_LOG_WRITE_THROUGH_RATE_LIMITED",
   REQUEST_LOG_DROPPED: "GW_REQUEST_LOG_DROPPED",
+  FAKE_200: "GW_FAKE_200",
 } as const;
 
 export type GatewayErrorCode = (typeof GatewayErrorCodes)[keyof typeof GatewayErrorCodes];
@@ -63,6 +64,7 @@ export const GatewayErrorShortLabels = {
   [GatewayErrorCodes.RESPONSE_BUILD_ERROR]: "响应构建错误",
   [GatewayErrorCodes.PROVIDER_RATE_LIMITED]: "供应商限额",
   [GatewayErrorCodes.PROVIDER_CIRCUIT_OPEN]: "供应商熔断",
+  [GatewayErrorCodes.FAKE_200]: "假200",
 } satisfies Partial<Record<GatewayErrorCode, string>>;
 
 export function getGatewayErrorShortLabel(errorCode: string) {
@@ -199,5 +201,10 @@ export const GatewayErrorDescriptions = {
   GW_REQUEST_LOG_DROPPED: {
     desc: "请求日志被丢弃",
     suggestion: "部分请求日志因队列压力被丢弃。不影响请求处理。",
+  },
+  GW_FAKE_200: {
+    desc: "上游返回伪成功响应",
+    suggestion:
+      "上游 Provider 返回了 HTTP 200 但响应体包含错误内容。已自动标记为失败并更新熔断器状态。",
   },
 } satisfies Record<GatewayErrorCode, GatewayErrorDescription>;

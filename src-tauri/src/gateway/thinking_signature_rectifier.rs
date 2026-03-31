@@ -61,9 +61,11 @@ pub(super) fn detect_trigger(error_message: &str) -> Option<ThinkingSignatureRec
         return Some(TRIGGER_INVALID_SIGNATURE_IN_THINKING_BLOCK);
     }
 
-    if error_message.contains("非法请求")
+    let looks_like_generic_invalid_request = error_message.contains("非法请求")
         || lower.contains("illegal request")
-        || lower.contains("invalid request")
+        || lower.contains("invalid request");
+    if looks_like_generic_invalid_request
+        && (lower.contains("thinking") || lower.contains("signature") || lower.contains("redacted"))
     {
         return Some(TRIGGER_INVALID_REQUEST);
     }

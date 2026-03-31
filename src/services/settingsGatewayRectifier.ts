@@ -6,6 +6,7 @@ export type GatewayRectifierSettingsPatch = {
   intercept_anthropic_warmup_requests: boolean;
   enable_thinking_signature_rectifier: boolean;
   enable_thinking_budget_rectifier: boolean;
+  enable_billing_header_rectifier: boolean;
   enable_claude_metadata_user_id_injection: boolean;
   enable_response_fixer: boolean;
   response_fixer_fix_encoding: boolean;
@@ -21,6 +22,7 @@ export async function settingsGatewayRectifierSet(input: GatewayRectifierSetting
     interceptAnthropicWarmupRequests: input.intercept_anthropic_warmup_requests,
     enableThinkingSignatureRectifier: input.enable_thinking_signature_rectifier,
     enableThinkingBudgetRectifier: input.enable_thinking_budget_rectifier,
+    enableBillingHeaderRectifier: input.enable_billing_header_rectifier,
     enableClaudeMetadataUserIdInjection: input.enable_claude_metadata_user_id_injection,
     enableResponseFixer: input.enable_response_fixer,
     responseFixerFixEncoding: input.response_fixer_fix_encoding,

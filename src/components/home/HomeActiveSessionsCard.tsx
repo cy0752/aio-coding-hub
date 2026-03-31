@@ -9,7 +9,7 @@ import { Card } from "../../ui/Card";
 import { EmptyState } from "../../ui/EmptyState";
 import { Spinner } from "../../ui/Spinner";
 import { cn } from "../../utils/cn";
-import { formatDurationMs, formatInteger, formatUsdRaw } from "../../utils/formatters";
+import { formatDurationMs, formatInteger, formatUsd } from "../../utils/formatters";
 import { DollarSign } from "lucide-react";
 
 export type HomeActiveSessionsCardProps = {
@@ -78,7 +78,7 @@ export function HomeActiveSessionsCardContent({
                 <div className="flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-500 dark:text-slate-400 shadow-sm">
                   <DollarSign className="h-3 w-3 text-slate-400 dark:text-slate-500" />
                   <span className="font-mono font-medium text-slate-700 dark:text-slate-300">
-                    {formatUsdRaw(row.total_cost_usd)}
+                    {formatUsd(row.total_cost_usd)}
                   </span>
                 </div>
               </div>

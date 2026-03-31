@@ -391,6 +391,7 @@ fn create_oauth_provider_for_cas_test(db: &crate::db::Db, name: &str) -> i64 {
             note: None,
             source_provider_id: None,
             bridge_type: None,
+            stream_idle_timeout_seconds: None,
         },
     )
     .expect("create oauth provider")

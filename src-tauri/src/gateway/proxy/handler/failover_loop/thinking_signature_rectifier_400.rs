@@ -50,6 +50,7 @@ pub(super) async fn handle_thinking_rectifiers_400(
         provider_base_url_base,
         provider_index,
         session_reuse,
+        ..
     } = ProviderCtxOwned::from(provider_ctx);
 
     let AttemptCtx {

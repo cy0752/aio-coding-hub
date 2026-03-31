@@ -32,6 +32,7 @@ function createRectifierPatch(): GatewayRectifierSettingsPatch {
     intercept_anthropic_warmup_requests: false,
     enable_thinking_signature_rectifier: true,
     enable_thinking_budget_rectifier: true,
+    enable_billing_header_rectifier: true,
     enable_claude_metadata_user_id_injection: true,
     enable_response_fixer: true,
     response_fixer_fix_encoding: true,

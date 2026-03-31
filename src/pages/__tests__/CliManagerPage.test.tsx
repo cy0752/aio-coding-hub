@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
 import { toast } from "sonner";
 import { tauriDialogOpen, tauriOpenPath } from "../../test/mocks/tauri";
+import type { AppSettings } from "../../services/settings";
+import { createTestAppSettings } from "../../test/fixtures/settings";
 import { createTestQueryClient } from "../../test/utils/reactQuery";
 import { CliManagerPage } from "../CliManagerPage";
 import { logToConsole } from "../../services/consoleLog";
@@ -202,38 +204,11 @@ function renderWithProviders(element: ReactElement) {
   return { ...view, client };
 }
 
-function createAppSettings(overrides: Partial<any> = {}) {
+function createAppSettings(
+  overrides: Partial<{ [K in keyof AppSettings]: AppSettings[K] | undefined }> = {}
+) {
   return {
-    schema_version: 1,
-    preferred_port: 37123,
-    auto_start: false,
-    tray_enabled: true,
-    log_retention_days: 7,
-    provider_cooldown_seconds: 30,
-    provider_base_url_ping_cache_ttl_seconds: 60,
-    upstream_first_byte_timeout_seconds: 0,
-    upstream_stream_idle_timeout_seconds: 0,
-    upstream_request_timeout_non_streaming_seconds: 0,
-    verbose_provider_error: true,
-    intercept_anthropic_warmup_requests: false,
-    enable_thinking_signature_rectifier: true,
-    enable_thinking_budget_rectifier: true,
-    enable_response_fixer: true,
-    enable_cache_anomaly_monitor: false,
-    response_fixer_fix_encoding: true,
-    response_fixer_fix_sse_format: true,
-    response_fixer_fix_truncated_json: true,
-    response_fixer_max_json_depth: 200,
-    response_fixer_max_fix_size: 1024,
-    failover_max_attempts_per_provider: 5,
-    failover_max_providers_to_try: 5,
-    circuit_breaker_failure_threshold: 5,
-    circuit_breaker_open_duration_minutes: 30,
-    enable_circuit_breaker_notice: false,
-    enable_codex_session_id_completion: true,
-    enable_claude_metadata_user_id_injection: true,
-    codex_home_mode: "user_home_default",
-    codex_home_override: "",
+    ...createTestAppSettings(),
     ...overrides,
   };
 }

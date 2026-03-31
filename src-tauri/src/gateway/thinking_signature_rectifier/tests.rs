@@ -43,16 +43,30 @@ fn detect_trigger_missing_thinking_prefix() {
 }
 
 #[test]
-fn detect_trigger_invalid_request_variants() {
-    assert_eq!(detect_trigger("非法请求"), Some(TRIGGER_INVALID_REQUEST));
+fn detect_trigger_invalid_request_with_thinking_context() {
     assert_eq!(
-        detect_trigger("illegal request format"),
+        detect_trigger("非法请求: thinking block signature mismatch"),
         Some(TRIGGER_INVALID_REQUEST)
     );
     assert_eq!(
-        detect_trigger("invalid request: malformed JSON"),
+        detect_trigger("illegal request: invalid thinking parameter"),
         Some(TRIGGER_INVALID_REQUEST)
     );
+    assert_eq!(
+        detect_trigger("invalid request: signature verification failed"),
+        Some(TRIGGER_INVALID_REQUEST)
+    );
+    assert_eq!(
+        detect_trigger("invalid request: redacted block error"),
+        Some(TRIGGER_INVALID_REQUEST)
+    );
+}
+
+#[test]
+fn detect_trigger_invalid_request_without_thinking_context_returns_none() {
+    assert_eq!(detect_trigger("非法请求"), None);
+    assert_eq!(detect_trigger("illegal request format"), None);
+    assert_eq!(detect_trigger("invalid request: malformed JSON"), None);
 }
 
 #[test]

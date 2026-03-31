@@ -18,6 +18,8 @@ pub(super) fn apply_ensure_patches(conn: &mut Connection) -> crate::shared::erro
     ensure_provider_note(conn)?;
     ensure_provider_source_provider_id(conn)?;
     ensure_provider_bridge_type(conn)?;
+    ensure_request_logs_extended_columns(conn)?;
+    ensure_provider_stream_idle_timeout(conn)?;
     Ok(())
 }
 
@@ -765,6 +767,66 @@ fn ensure_provider_bridge_type(conn: &mut Connection) -> Result<(), String> {
         )
         .map_err(|e| format!("failed to back-fill bridge_type for cx2cc providers: {e}"))?;
     }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// ensure_provider_stream_idle_timeout
+// ---------------------------------------------------------------------------
+
+fn ensure_provider_stream_idle_timeout(conn: &mut Connection) -> Result<(), String> {
+    let has_providers_table: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'providers' LIMIT 1",
+            [],
+            |_| Ok(true),
+        )
+        .optional()
+        .map_err(|e| format!("failed to query sqlite_master: {e}"))?
+        .unwrap_or(false);
+
+    if !has_providers_table {
+        return Ok(());
+    }
+
+    if !column_exists(conn, "providers", "stream_idle_timeout_seconds")? {
+        conn.execute_batch(
+            "ALTER TABLE providers ADD COLUMN stream_idle_timeout_seconds INTEGER DEFAULT NULL;",
+        )
+        .map_err(|e| format!("failed to ensure providers.stream_idle_timeout_seconds: {e}"))?;
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// ensure_request_logs_extended_columns (provider_chain_json, error_details_json)
+// ---------------------------------------------------------------------------
+
+fn ensure_request_logs_extended_columns(conn: &mut Connection) -> Result<(), String> {
+    let has_request_logs: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'request_logs' LIMIT 1",
+            [],
+            |_| Ok(true),
+        )
+        .optional()
+        .map_err(|e| format!("failed to query sqlite_master: {e}"))?
+        .unwrap_or(false);
+
+    if !has_request_logs {
+        return Ok(());
+    }
+
+    if !column_exists(conn, "request_logs", "provider_chain_json")? {
+        conn.execute_batch("ALTER TABLE request_logs ADD COLUMN provider_chain_json TEXT;")
+            .map_err(|e| format!("failed to ensure request_logs.provider_chain_json: {e}"))?;
+    }
+
+    if !column_exists(conn, "request_logs", "error_details_json")? {
+        conn.execute_batch("ALTER TABLE request_logs ADD COLUMN error_details_json TEXT;")
+            .map_err(|e| format!("failed to ensure request_logs.error_details_json: {e}"))?;
+    }
+
     Ok(())
 }
 

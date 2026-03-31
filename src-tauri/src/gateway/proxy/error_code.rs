@@ -1,4 +1,6 @@
 //! Usage: Centralized gateway error-code enum for stable classification/mapping.
+//! SYNC: When adding/removing variants, also update `src/constants/gatewayErrorCodes.ts`
+//!       (GatewayErrorCodes + GatewayErrorShortLabels + GatewayErrorDescriptions).
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(in crate::gateway) enum GatewayErrorCode {
@@ -34,6 +36,7 @@ pub(in crate::gateway) enum GatewayErrorCode {
     RequestLogWriteThroughOnBackpressure,
     RequestLogWriteThroughRateLimited,
     RequestLogDropped,
+    Fake200,
 }
 
 impl GatewayErrorCode {
@@ -73,6 +76,7 @@ impl GatewayErrorCode {
             }
             Self::RequestLogWriteThroughRateLimited => "GW_REQUEST_LOG_WRITE_THROUGH_RATE_LIMITED",
             Self::RequestLogDropped => "GW_REQUEST_LOG_DROPPED",
+            Self::Fake200 => "GW_FAKE_200",
         }
     }
 
@@ -112,6 +116,7 @@ impl GatewayErrorCode {
             }
             "GW_REQUEST_LOG_WRITE_THROUGH_RATE_LIMITED" => Self::RequestLogWriteThroughRateLimited,
             "GW_REQUEST_LOG_DROPPED" => Self::RequestLogDropped,
+            "GW_FAKE_200" => Self::Fake200,
             _ => return None,
         })
     }

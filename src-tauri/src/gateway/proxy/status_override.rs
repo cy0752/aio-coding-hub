@@ -6,6 +6,7 @@ pub(in crate::gateway) fn status_override_for_error_code(error_code: Option<&str
         GatewayErrorCode::RequestAborted | GatewayErrorCode::StreamAborted => Some(499),
         GatewayErrorCode::UpstreamTimeout | GatewayErrorCode::StreamIdleTimeout => Some(524),
         GatewayErrorCode::StreamError
+        | GatewayErrorCode::Fake200
         | GatewayErrorCode::UpstreamReadError
         | GatewayErrorCode::UpstreamConnectFailed
         | GatewayErrorCode::UpstreamBodyReadError
@@ -69,6 +70,10 @@ mod tests {
             Some(502)
         );
         assert_eq!(
+            status_override_for_error_code(Some(GatewayErrorCode::Fake200.as_str())),
+            Some(502)
+        );
+        assert_eq!(
             status_override_for_error_code(Some(
                 GatewayErrorCode::AllProvidersUnavailable.as_str()
             )),
@@ -88,6 +93,10 @@ mod tests {
         assert_eq!(
             effective_status(Some(200), Some(GatewayErrorCode::StreamAborted.as_str())),
             Some(499)
+        );
+        assert_eq!(
+            effective_status(Some(200), Some(GatewayErrorCode::Fake200.as_str())),
+            Some(502)
         );
         assert_eq!(
             effective_status(Some(404), Some(GatewayErrorCode::Upstream4xx.as_str())),

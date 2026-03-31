@@ -339,6 +339,7 @@ pub struct SseUsageTracker {
     last_model: Option<String>,
     completion_seen: bool,
     terminal_error_seen: bool,
+    fake_200_detected: bool,
 }
 
 fn trim_ascii(bytes: &[u8]) -> &[u8] {
@@ -429,6 +430,7 @@ impl SseUsageTracker {
             last_model: None,
             completion_seen: false,
             terminal_error_seen: false,
+            fake_200_detected: false,
         }
     }
 
@@ -438,6 +440,10 @@ impl SseUsageTracker {
 
     pub fn terminal_error_seen(&self) -> bool {
         self.terminal_error_seen
+    }
+
+    pub fn fake_200_detected(&self) -> bool {
+        self.fake_200_detected
     }
 
     pub fn ingest_chunk(&mut self, chunk: &[u8]) {
@@ -530,6 +536,14 @@ impl SseUsageTracker {
         }
         if is_terminal_error_event_name(event) {
             self.terminal_error_seen = true;
+            // Fake 200: upstream returned HTTP 200 but body contains an error event.
+            // Detect patterns: SSE `event: error` with a JSON body containing "error" object
+            // or `"type":"error"` in the data payload.
+            if data.get("error").is_some()
+                || data.get("type").and_then(|v| v.as_str()) == Some("error")
+            {
+                self.fake_200_detected = true;
+            }
         }
 
         if let Some(event_type) = data.get("type").and_then(|v| v.as_str()) {
@@ -538,6 +552,10 @@ impl SseUsageTracker {
             }
             if is_terminal_error_event_type(event_type) {
                 self.terminal_error_seen = true;
+                // Also detect fake 200 from data.type == "error" with an error object
+                if data.get("error").is_some() {
+                    self.fake_200_detected = true;
+                }
             }
         }
 

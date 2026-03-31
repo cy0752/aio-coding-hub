@@ -48,6 +48,7 @@ export type AppSettings = {
   intercept_anthropic_warmup_requests: boolean;
   enable_thinking_signature_rectifier: boolean;
   enable_thinking_budget_rectifier: boolean;
+  enable_billing_header_rectifier: boolean;
   enable_codex_session_id_completion: boolean;
   enable_claude_metadata_user_id_injection: boolean;
   enable_cache_anomaly_monitor: boolean;
@@ -93,6 +94,7 @@ export type SettingsSetInput = {
   interceptAnthropicWarmupRequests?: boolean;
   enableThinkingSignatureRectifier?: boolean;
   enableThinkingBudgetRectifier?: boolean;
+  enableBillingHeaderRectifier?: boolean;
   enableCacheAnomalyMonitor?: boolean;
   enableTaskCompleteNotify?: boolean;
   enableNotificationSound?: boolean;

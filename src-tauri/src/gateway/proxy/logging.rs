@@ -48,6 +48,8 @@ fn request_log_insert_from_args(
         created_at,
         usage_metrics,
         usage,
+        provider_chain_json,
+        error_details_json,
     } = args;
 
     if !crate::shared::cli_key::is_supported_cli_key(cli_key.as_str()) {
@@ -92,6 +94,8 @@ fn request_log_insert_from_args(
         requested_model,
         created_at_ms,
         created_at,
+        provider_chain_json,
+        error_details_json,
     })
 }
 
@@ -289,6 +293,8 @@ mod tests {
             created_at: 0,
             usage_metrics: None,
             usage: None,
+            provider_chain_json: None,
+            error_details_json: None,
         }
     }
 

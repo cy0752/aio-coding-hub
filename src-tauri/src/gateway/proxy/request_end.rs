@@ -77,6 +77,8 @@ struct RequestEndPayloadParts {
     created_at: i64,
     usage_metrics: Option<crate::usage::UsageMetrics>,
     usage: Option<crate::usage::UsageExtract>,
+    provider_chain_json: Option<String>,
+    error_details_json: Option<String>,
 }
 
 fn serialize_attempts(attempts: &[FailoverAttempt]) -> String {
@@ -85,6 +87,60 @@ fn serialize_attempts(attempts: &[FailoverAttempt]) -> String {
     } else {
         serde_json::to_string(attempts).unwrap_or_else(|_| "[]".to_string())
     }
+}
+
+fn build_provider_chain_json(attempts: &[FailoverAttempt]) -> Option<String> {
+    if attempts.is_empty() {
+        return None;
+    }
+    let chain: Vec<serde_json::Value> = attempts
+        .iter()
+        .map(|a| {
+            let mut obj = serde_json::Map::new();
+            obj.insert("provider_id".into(), serde_json::json!(a.provider_id));
+            obj.insert("provider_name".into(), serde_json::json!(a.provider_name));
+            if let Some(status) = a.status {
+                obj.insert("status".into(), serde_json::json!(status));
+            }
+            obj.insert("outcome".into(), serde_json::json!(a.outcome));
+            if let Some(decision) = a.decision {
+                obj.insert("decision".into(), serde_json::json!(decision));
+            }
+            if let Some(ref reason) = a.reason {
+                obj.insert("reason".into(), serde_json::json!(reason));
+            }
+            if let Some(duration_ms) = a.attempt_duration_ms {
+                obj.insert("duration_ms".into(), serde_json::json!(duration_ms));
+            }
+            serde_json::Value::Object(obj)
+        })
+        .collect();
+    serde_json::to_string(&chain).ok()
+}
+
+fn build_error_details_json(
+    error_code: Option<&str>,
+    attempts: &[FailoverAttempt],
+) -> Option<String> {
+    error_code?;
+    let last_attempt = attempts.last()?;
+    let mut obj = serde_json::Map::new();
+    if let Some(error_code) = last_attempt.error_code {
+        obj.insert("error_code".into(), serde_json::json!(error_code));
+    }
+    if let Some(ref reason) = last_attempt.reason {
+        obj.insert("reason".into(), serde_json::json!(reason));
+    }
+    if let Some(error_category) = last_attempt.error_category {
+        obj.insert("error_category".into(), serde_json::json!(error_category));
+    }
+    if let Some(status) = last_attempt.status {
+        obj.insert("upstream_status".into(), serde_json::json!(status));
+    }
+    if obj.is_empty() {
+        return None;
+    }
+    serde_json::to_string(&serde_json::Value::Object(obj)).ok()
 }
 
 fn build_request_end_payload(
@@ -110,8 +166,13 @@ fn build_request_end_payload(
         created_at,
         usage_metrics,
         usage,
+        provider_chain_json,
+        error_details_json,
     } = parts;
 
+    let provider_chain_json = provider_chain_json.or_else(|| build_provider_chain_json(&attempts));
+    let error_details_json =
+        error_details_json.or_else(|| build_error_details_json(error_code, &attempts));
     let attempts_json = attempts_json.unwrap_or_else(|| serialize_attempts(&attempts));
     let log_args = RequestLogEnqueueArgs {
         trace_id,
@@ -132,6 +193,8 @@ fn build_request_end_payload(
         created_at,
         usage_metrics,
         usage,
+        provider_chain_json,
+        error_details_json,
     };
 
     (log_args, attempts)
@@ -184,6 +247,8 @@ impl RequestLogEnqueueArgs {
             created_at,
             usage_metrics,
             usage,
+            provider_chain_json: None,
+            error_details_json: None,
         })
     }
 
@@ -229,6 +294,8 @@ impl RequestLogEnqueueArgs {
             created_at,
             usage_metrics: None,
             usage,
+            provider_chain_json: None,
+            error_details_json: None,
         })
     }
 

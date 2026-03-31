@@ -221,6 +221,8 @@ async fn enqueue_in_progress_request_log_if_needed(
             created_at,
             usage_metrics: None,
             usage: None,
+            provider_chain_json: None,
+            error_details_json: None,
         },
     )
     .await;
@@ -398,6 +400,7 @@ struct HandlerRuntimeSettings {
     intercept_warmup: bool,
     enable_thinking_signature_rectifier: bool,
     enable_thinking_budget_rectifier: bool,
+    enable_billing_header_rectifier: bool,
     cx2cc_settings: super::cx2cc::settings::Cx2ccSettings,
     enable_response_fixer: bool,
     response_fixer_stream_config: response_fixer::ResponseFixerConfig,
@@ -430,6 +433,9 @@ fn handler_runtime_settings(
         .map(|cfg| cfg.enable_thinking_budget_rectifier)
         .unwrap_or(true)
         && !is_claude_count_tokens;
+    let enable_billing_header_rectifier = settings_cfg
+        .map(|cfg| cfg.enable_billing_header_rectifier)
+        .unwrap_or(true);
     let cx2cc_settings = settings_cfg
         .map(super::cx2cc::settings::Cx2ccSettings::from_app_settings)
         .unwrap_or_default();
@@ -472,6 +478,7 @@ fn handler_runtime_settings(
             .unwrap_or(false),
         enable_thinking_signature_rectifier,
         enable_thinking_budget_rectifier,
+        enable_billing_header_rectifier,
         cx2cc_settings,
         enable_response_fixer,
         response_fixer_stream_config: response_fixer::ResponseFixerConfig {
@@ -936,6 +943,27 @@ pub(in crate::gateway) async fn proxy_impl(
         &special_settings,
     );
 
+    if cli_key == "claude" && runtime_settings.enable_billing_header_rectifier {
+        if let Some(root) = introspection_json.as_mut() {
+            let result = super::super::billing_header_rectifier::rectify(root);
+            if result.applied {
+                if let Ok(next) = serde_json::to_vec(root) {
+                    body_bytes = Bytes::from(next);
+                    strip_request_content_encoding_seed = true;
+                }
+                push_special_setting(
+                    &special_settings,
+                    serde_json::json!({
+                        "type": "billing_header_rectifier",
+                        "scope": "request",
+                        "hit": true,
+                        "removedCount": result.removed_count,
+                    }),
+                );
+            }
+        }
+    }
+
     let SessionRoutingDecision {
         session_id,
         allow_session_reuse,
@@ -1150,6 +1178,7 @@ mod tests {
             oauth_provider_type: None,
             source_provider_id: None,
             bridge_type: None,
+            stream_idle_timeout_seconds: None,
         }
     }
 

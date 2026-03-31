@@ -1,11 +1,11 @@
 use super::context::CommonCtx;
 use crate::gateway::claude_metadata_user_id_injection::{
-    inject_from_json_bytes, ClaudeMetadataUserIdInjectionOutcome,
+    inject_from_json_bytes_with_ua, ClaudeMetadataUserIdInjectionOutcome,
 };
 use crate::gateway::util::body_for_introspection;
 use crate::shared::mutex_ext::MutexExt;
 use axum::body::Bytes;
-use axum::http::HeaderMap;
+use axum::http::{header, HeaderMap};
 
 pub(super) struct ApplyClaudeMetadataUserIdInjectionInput<'a> {
     pub(super) ctx: CommonCtx<'a>,
@@ -39,7 +39,16 @@ pub(super) fn apply_if_needed(input: ApplyClaudeMetadataUserIdInjectionInput<'_>
         body_for_introspection(base_headers, upstream_body_bytes.as_ref())
     };
 
-    match inject_from_json_bytes(provider_id, session_id, body_for_parse.as_ref()) {
+    let user_agent = base_headers
+        .get(header::USER_AGENT)
+        .and_then(|v| v.to_str().ok());
+
+    match inject_from_json_bytes_with_ua(
+        provider_id,
+        session_id,
+        body_for_parse.as_ref(),
+        user_agent,
+    ) {
         ClaudeMetadataUserIdInjectionOutcome::Injected { body_bytes } => {
             *upstream_body_bytes = Bytes::from(body_bytes);
             *strip_request_content_encoding = true;

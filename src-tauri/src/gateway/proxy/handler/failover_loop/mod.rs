@@ -809,6 +809,7 @@ pub(super) async fn run(mut input: RequestContext) -> Response {
             provider_base_url_base: &provider_base_url_base,
             provider_index,
             session_reuse,
+            stream_idle_timeout_seconds: provider.stream_idle_timeout_seconds,
         };
 
         if should_apply_claude_model_mapping(cx2cc_active, &upstream_forwarded_path) {

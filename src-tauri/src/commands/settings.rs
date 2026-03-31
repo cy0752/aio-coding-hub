@@ -37,6 +37,7 @@ pub(crate) struct SettingsUpdate {
     pub intercept_anthropic_warmup_requests: Option<bool>,
     pub enable_thinking_signature_rectifier: Option<bool>,
     pub enable_thinking_budget_rectifier: Option<bool>,
+    pub enable_billing_header_rectifier: Option<bool>,
     pub enable_claude_metadata_user_id_injection: Option<bool>,
     pub enable_cache_anomaly_monitor: Option<bool>,
     pub enable_task_complete_notify: Option<bool>,
@@ -139,6 +140,7 @@ pub(crate) async fn settings_set_impl<R: tauri::Runtime>(
         intercept_anthropic_warmup_requests,
         enable_thinking_signature_rectifier,
         enable_thinking_budget_rectifier,
+        enable_billing_header_rectifier,
         enable_claude_metadata_user_id_injection,
         enable_cache_anomaly_monitor,
         enable_task_complete_notify,
@@ -260,6 +262,8 @@ pub(crate) async fn settings_set_impl<R: tauri::Runtime>(
                 .unwrap_or(previous.enable_thinking_signature_rectifier);
             let enable_thinking_budget_rectifier = enable_thinking_budget_rectifier
                 .unwrap_or(previous.enable_thinking_budget_rectifier);
+            let enable_billing_header_rectifier =
+                enable_billing_header_rectifier.unwrap_or(previous.enable_billing_header_rectifier);
             let enable_claude_metadata_user_id_injection = enable_claude_metadata_user_id_injection
                 .unwrap_or(previous.enable_claude_metadata_user_id_injection);
             let enable_cache_anomaly_monitor =
@@ -323,6 +327,7 @@ pub(crate) async fn settings_set_impl<R: tauri::Runtime>(
                 intercept_anthropic_warmup_requests,
                 enable_thinking_signature_rectifier,
                 enable_thinking_budget_rectifier,
+                enable_billing_header_rectifier,
                 enable_codex_session_id_completion: previous.enable_codex_session_id_completion,
                 enable_claude_metadata_user_id_injection,
                 enable_cache_anomaly_monitor,
@@ -377,6 +382,7 @@ pub(crate) async fn settings_gateway_rectifier_set(
     intercept_anthropic_warmup_requests: bool,
     enable_thinking_signature_rectifier: bool,
     enable_thinking_budget_rectifier: bool,
+    enable_billing_header_rectifier: bool,
     enable_claude_metadata_user_id_injection: bool,
     enable_response_fixer: bool,
     response_fixer_fix_encoding: bool,
@@ -394,6 +400,7 @@ pub(crate) async fn settings_gateway_rectifier_set(
         settings.intercept_anthropic_warmup_requests = intercept_anthropic_warmup_requests;
         settings.enable_thinking_signature_rectifier = enable_thinking_signature_rectifier;
         settings.enable_thinking_budget_rectifier = enable_thinking_budget_rectifier;
+        settings.enable_billing_header_rectifier = enable_billing_header_rectifier;
         settings.enable_claude_metadata_user_id_injection =
             enable_claude_metadata_user_id_injection;
         settings.enable_response_fixer = enable_response_fixer;
@@ -414,6 +421,7 @@ pub(crate) async fn settings_gateway_rectifier_set(
             intercept_anthropic_warmup_requests = settings.intercept_anthropic_warmup_requests,
             enable_thinking_signature_rectifier = settings.enable_thinking_signature_rectifier,
             enable_thinking_budget_rectifier = settings.enable_thinking_budget_rectifier,
+            enable_billing_header_rectifier = settings.enable_billing_header_rectifier,
             enable_claude_metadata_user_id_injection =
                 settings.enable_claude_metadata_user_id_injection,
             enable_response_fixer = settings.enable_response_fixer,

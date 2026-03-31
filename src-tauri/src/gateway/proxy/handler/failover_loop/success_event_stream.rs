@@ -3,6 +3,7 @@
 use super::super::super::gemini_oauth;
 use super::super::super::protocol_bridge;
 use super::*;
+use std::time::Duration;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn handle_success_event_stream(
@@ -20,7 +21,17 @@ pub(super) async fn handle_success_event_stream(
     let started = common.started;
     let upstream_first_byte_timeout_secs = common.upstream_first_byte_timeout_secs;
     let upstream_first_byte_timeout = common.upstream_first_byte_timeout;
-    let upstream_stream_idle_timeout = common.upstream_stream_idle_timeout;
+    // Per-provider idle timeout overrides the global setting if configured.
+    let upstream_stream_idle_timeout = provider_ctx_owned
+        .stream_idle_timeout_seconds
+        .and_then(|secs| {
+            if secs > 0 {
+                Some(Duration::from_secs(secs as u64))
+            } else {
+                None
+            }
+        })
+        .or(common.upstream_stream_idle_timeout);
     let max_attempts_per_provider = common.max_attempts_per_provider;
     let enable_response_fixer = common.enable_response_fixer;
     let response_fixer_stream_config = common.response_fixer_stream_config;

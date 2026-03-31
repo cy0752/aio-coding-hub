@@ -35,4 +35,5 @@ pub(in crate::gateway) struct StreamFinalizeCtx {
     pub(in crate::gateway) provider_id: i64,
     pub(in crate::gateway) provider_name: String,
     pub(in crate::gateway) base_url: String,
+    pub(in crate::gateway) fake_200_detected: bool,
 }

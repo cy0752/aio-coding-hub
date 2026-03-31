@@ -45,6 +45,7 @@ pub(crate) struct ProviderUpsertInput {
     pub note: Option<String>,
     pub source_provider_id: Option<i64>,
     pub bridge_type: Option<String>,
+    pub stream_idle_timeout_seconds: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -136,6 +137,7 @@ pub(crate) async fn provider_upsert(
         note,
         source_provider_id,
         bridge_type,
+        stream_idle_timeout_seconds,
     } = input;
 
     let is_create = provider_id.is_none();
@@ -181,6 +183,7 @@ pub(crate) async fn provider_upsert(
                 note,
                 source_provider_id,
                 bridge_type,
+                stream_idle_timeout_seconds,
             },
         )?;
 
@@ -1274,7 +1277,8 @@ mod tests {
             "limitMonthlyUsd": null,
             "limitTotalUsd": null,
             "tags": ["x"],
-            "note": "n"
+            "note": "n",
+            "streamIdleTimeoutSeconds": 90
         }))
         .expect("deserialize provider input");
 
@@ -1285,6 +1289,7 @@ mod tests {
             input.daily_reset_mode,
             Some(providers::DailyResetMode::Fixed)
         );
+        assert_eq!(input.stream_idle_timeout_seconds, Some(90));
     }
 
     #[test]
@@ -1406,6 +1411,7 @@ mod tests {
             oauth_last_error: None,
             source_provider_id: None,
             bridge_type: None,
+            stream_idle_timeout_seconds: None,
         };
 
         assert_eq!(
@@ -1469,6 +1475,7 @@ mod tests {
             oauth_last_error: None,
             source_provider_id: None,
             bridge_type: None,
+            stream_idle_timeout_seconds: None,
         };
 
         let mut next = previous.clone();

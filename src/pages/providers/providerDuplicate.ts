@@ -22,6 +22,7 @@ export type ProviderEditorInitialValues = {
   note: string;
   source_provider_id: number | null;
   bridge_type: string | null;
+  stream_idle_timeout_seconds: number | null;
 };
 
 function normalizeProviderName(name: string) {
@@ -77,5 +78,6 @@ export function buildDuplicatedProviderInitialValues(
     note: provider.note ?? "",
     source_provider_id: provider.source_provider_id ?? null,
     bridge_type: provider.bridge_type ?? null,
+    stream_idle_timeout_seconds: provider.stream_idle_timeout_seconds ?? null,
   };
 }

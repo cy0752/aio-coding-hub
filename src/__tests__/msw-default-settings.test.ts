@@ -6,7 +6,7 @@ describe("MSW defaults", () => {
     resetMswState();
 
     expect(getSettingsState()).toEqual({
-      schema_version: 26,
+      schema_version: 28,
       preferred_port: 37123,
       show_home_heatmap: true,
       show_home_usage: true,
@@ -26,8 +26,8 @@ describe("MSW defaults", () => {
       log_retention_days: 7,
       provider_cooldown_seconds: 30,
       provider_base_url_ping_cache_ttl_seconds: 60,
-      upstream_first_byte_timeout_seconds: 0,
-      upstream_stream_idle_timeout_seconds: 0,
+      upstream_first_byte_timeout_seconds: 30,
+      upstream_stream_idle_timeout_seconds: 120,
       upstream_request_timeout_non_streaming_seconds: 0,
       update_releases_url: "https://github.com/dyndynjyxa/aio-coding-hub/releases",
       failover_max_attempts_per_provider: 5,
@@ -39,6 +39,7 @@ describe("MSW defaults", () => {
       intercept_anthropic_warmup_requests: true,
       enable_thinking_signature_rectifier: true,
       enable_thinking_budget_rectifier: true,
+      enable_billing_header_rectifier: true,
       enable_codex_session_id_completion: true,
       enable_claude_metadata_user_id_injection: true,
       enable_cache_anomaly_monitor: false,

@@ -197,6 +197,18 @@ export function CliManagerGeneralTab({
                   />
                 </SettingsRow>
                 <SettingsRow
+                  label="Billing Header 整流器"
+                  subtitle="自动移除 Claude 请求里的 billing header system 块。"
+                >
+                  <Switch
+                    checked={rectifier.enable_billing_header_rectifier}
+                    onCheckedChange={(checked) =>
+                      void onPersistRectifier({ enable_billing_header_rectifier: checked })
+                    }
+                    disabled={rectifierDisabled}
+                  />
+                </SettingsRow>
+                <SettingsRow
                   label="Claude metadata.user_id 注入"
                   subtitle="为 Claude 请求自动注入 metadata.user_id 字段。"
                 >

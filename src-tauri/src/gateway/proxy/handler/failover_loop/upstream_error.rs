@@ -183,6 +183,7 @@ pub(super) async fn handle_non_success_response(
         provider_base_url_base,
         provider_index,
         session_reuse,
+        ..
     } = provider_ctx;
 
     let AttemptCtx {

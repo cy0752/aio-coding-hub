@@ -9,7 +9,7 @@ use std::sync::{OnceLock, RwLock};
 use std::time::{Duration, Instant};
 use tauri::Manager;
 
-pub const SCHEMA_VERSION: u32 = 26;
+pub const SCHEMA_VERSION: u32 = 28;
 const SCHEMA_VERSION_DISABLE_UPSTREAM_TIMEOUTS: u32 = 7;
 const SCHEMA_VERSION_ADD_GATEWAY_RECTIFIERS: u32 = 8;
 const SCHEMA_VERSION_ADD_CIRCUIT_BREAKER_NOTICE: u32 = 9;
@@ -30,13 +30,15 @@ const SCHEMA_VERSION_ADD_CODEX_HOME_OVERRIDE: u32 = 23;
 const SCHEMA_VERSION_ADD_CODEX_HOME_MODE: u32 = 24;
 const SCHEMA_VERSION_ADD_NOTIFICATION_SOUND: u32 = 25;
 const SCHEMA_VERSION_ADD_CX2CC_SETTINGS: u32 = 26;
+const SCHEMA_VERSION_ENABLE_DEFAULT_UPSTREAM_TIMEOUTS: u32 = 27;
+const SCHEMA_VERSION_ADD_BILLING_HEADER_RECTIFIER: u32 = 28;
 pub const DEFAULT_GATEWAY_PORT: u16 = 37123;
 pub const MAX_GATEWAY_PORT: u16 = 37199;
 const DEFAULT_LOG_RETENTION_DAYS: u32 = 7;
 pub const DEFAULT_PROVIDER_COOLDOWN_SECONDS: u32 = 30;
 pub const DEFAULT_PROVIDER_BASE_URL_PING_CACHE_TTL_SECONDS: u32 = 60;
-pub const DEFAULT_UPSTREAM_FIRST_BYTE_TIMEOUT_SECONDS: u32 = 0;
-pub const DEFAULT_UPSTREAM_STREAM_IDLE_TIMEOUT_SECONDS: u32 = 0;
+pub const DEFAULT_UPSTREAM_FIRST_BYTE_TIMEOUT_SECONDS: u32 = 30;
+pub const DEFAULT_UPSTREAM_STREAM_IDLE_TIMEOUT_SECONDS: u32 = 120;
 pub const DEFAULT_UPSTREAM_REQUEST_TIMEOUT_NON_STREAMING_SECONDS: u32 = 0;
 const DEFAULT_FAILOVER_MAX_ATTEMPTS_PER_PROVIDER: u32 = 5;
 const DEFAULT_FAILOVER_MAX_PROVIDERS_TO_TRY: u32 = 5;
@@ -47,6 +49,7 @@ const DEFAULT_VERBOSE_PROVIDER_ERROR: bool = true;
 const DEFAULT_INTERCEPT_ANTHROPIC_WARMUP_REQUESTS: bool = true;
 const DEFAULT_ENABLE_THINKING_SIGNATURE_RECTIFIER: bool = true;
 const DEFAULT_ENABLE_THINKING_BUDGET_RECTIFIER: bool = true;
+const DEFAULT_ENABLE_BILLING_HEADER_RECTIFIER: bool = true;
 const DEFAULT_ENABLE_CODEX_SESSION_ID_COMPLETION: bool = true;
 const DEFAULT_ENABLE_CLAUDE_METADATA_USER_ID_INJECTION: bool = true;
 const DEFAULT_ENABLE_CACHE_ANOMALY_MONITOR: bool = false;
@@ -231,6 +234,8 @@ pub struct AppSettings {
     pub intercept_anthropic_warmup_requests: bool,
     pub enable_thinking_signature_rectifier: bool,
     pub enable_thinking_budget_rectifier: bool,
+    // Billing header rectifier: strip x-anthropic-billing-header from system prompt (default enabled).
+    pub enable_billing_header_rectifier: bool,
     // Codex Session ID completion (default enabled).
     pub enable_codex_session_id_completion: bool,
     // Claude metadata.user_id injection (default enabled).
@@ -300,6 +305,7 @@ impl Default for AppSettings {
             intercept_anthropic_warmup_requests: DEFAULT_INTERCEPT_ANTHROPIC_WARMUP_REQUESTS,
             enable_thinking_signature_rectifier: DEFAULT_ENABLE_THINKING_SIGNATURE_RECTIFIER,
             enable_thinking_budget_rectifier: DEFAULT_ENABLE_THINKING_BUDGET_RECTIFIER,
+            enable_billing_header_rectifier: DEFAULT_ENABLE_BILLING_HEADER_RECTIFIER,
             enable_codex_session_id_completion: DEFAULT_ENABLE_CODEX_SESSION_ID_COMPLETION,
             enable_claude_metadata_user_id_injection:
                 DEFAULT_ENABLE_CLAUDE_METADATA_USER_ID_INJECTION,
@@ -815,9 +821,34 @@ fn migrate_add_cx2cc_settings(settings: &mut AppSettings, schema_version_present
     true
 }
 
+fn migrate_enable_default_upstream_timeouts(
+    settings: &mut AppSettings,
+    schema_version_present: bool,
+) -> bool {
+    // Fresh installs already pick up the new defaults from `AppSettings::default`.
+    // Existing installs must preserve explicit `0 = disabled` choices.
+    migrate_bump_schema_version(
+        settings,
+        schema_version_present,
+        SCHEMA_VERSION_ENABLE_DEFAULT_UPSTREAM_TIMEOUTS,
+    )
+}
+
+fn migrate_add_billing_header_rectifier(
+    settings: &mut AppSettings,
+    schema_version_present: bool,
+) -> bool {
+    // v28: Add billing header rectifier toggle (default enabled).
+    migrate_bump_schema_version(
+        settings,
+        schema_version_present,
+        SCHEMA_VERSION_ADD_BILLING_HEADER_RECTIFIER,
+    )
+}
+
 type SettingsMigration = fn(&mut AppSettings, bool) -> bool;
 
-const SETTINGS_MIGRATIONS: [SettingsMigration; 20] = [
+const SETTINGS_MIGRATIONS: [SettingsMigration; 22] = [
     migrate_disable_upstream_timeouts,
     migrate_add_gateway_rectifiers,
     migrate_add_circuit_breaker_notice,
@@ -838,6 +869,8 @@ const SETTINGS_MIGRATIONS: [SettingsMigration; 20] = [
     migrate_add_codex_home_mode,
     migrate_add_notification_sound,
     migrate_add_cx2cc_settings,
+    migrate_enable_default_upstream_timeouts,
+    migrate_add_billing_header_rectifier,
 ];
 
 fn apply_settings_migrations(settings: &mut AppSettings, schema_version_present: bool) -> bool {
@@ -1577,6 +1610,42 @@ mod tests {
         assert!(!migrate_disable_upstream_timeouts(&mut s, true));
         // Value should NOT be reset since migration is already applied
         assert_eq!(s.upstream_first_byte_timeout_seconds, 30);
+    }
+
+    #[test]
+    fn migrate_enable_default_upstream_timeouts_preserves_disabled_values() {
+        let mut s = AppSettings {
+            schema_version: 26,
+            upstream_first_byte_timeout_seconds: 0,
+            upstream_stream_idle_timeout_seconds: 0,
+            ..Default::default()
+        };
+
+        assert!(migrate_enable_default_upstream_timeouts(&mut s, true));
+        assert_eq!(
+            s.schema_version,
+            SCHEMA_VERSION_ENABLE_DEFAULT_UPSTREAM_TIMEOUTS
+        );
+        assert_eq!(s.upstream_first_byte_timeout_seconds, 0);
+        assert_eq!(s.upstream_stream_idle_timeout_seconds, 0);
+    }
+
+    #[test]
+    fn migrate_enable_default_upstream_timeouts_keeps_existing_nonzero_values() {
+        let mut s = AppSettings {
+            schema_version: 26,
+            upstream_first_byte_timeout_seconds: 15,
+            upstream_stream_idle_timeout_seconds: 45,
+            ..Default::default()
+        };
+
+        assert!(migrate_enable_default_upstream_timeouts(&mut s, true));
+        assert_eq!(
+            s.schema_version,
+            SCHEMA_VERSION_ENABLE_DEFAULT_UPSTREAM_TIMEOUTS
+        );
+        assert_eq!(s.upstream_first_byte_timeout_seconds, 15);
+        assert_eq!(s.upstream_stream_idle_timeout_seconds, 45);
     }
 
     // -- GatewayListenMode --

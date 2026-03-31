@@ -33,6 +33,7 @@ fn provider_for_base_url_test(
         oauth_provider_type: oauth_provider_type.map(str::to_string),
         source_provider_id: None,
         bridge_type: None,
+        stream_idle_timeout_seconds: None,
     }
 }
 

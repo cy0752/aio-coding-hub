@@ -196,6 +196,7 @@ export function ProviderEditorDialog(props: ProviderEditorDialogProps) {
   const [claudeModels, setClaudeModels] = useState<ClaudeModels>({});
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
+  const [streamIdleTimeoutSeconds, setStreamIdleTimeoutSeconds] = useState("");
   const [saving, setSaving] = useState(false);
   const [fetchingApiKey, setFetchingApiKey] = useState(false);
   const [savedApiKey, setSavedApiKey] = useState<string | null>(null);
@@ -284,6 +285,7 @@ export function ProviderEditorDialog(props: ProviderEditorDialogProps) {
       setClaudeModels(createInitialValues?.claude_models ?? {});
       setTags(createInitialValues?.tags ?? []);
       setTagInput("");
+      setStreamIdleTimeoutSeconds(valueOrEmpty(createInitialValues?.stream_idle_timeout_seconds));
       setSourceProviderId(initialSourceProviderId);
       setAuthMode(
         initialSourceProviderId != null ? "cx2cc" : (createInitialValues?.auth_mode ?? "api_key")
@@ -306,6 +308,7 @@ export function ProviderEditorDialog(props: ProviderEditorDialogProps) {
     setClaudeModels(snapshot.claude_models ?? {});
     setTags(snapshot.tags ?? []);
     setTagInput("");
+    setStreamIdleTimeoutSeconds(valueOrEmpty(snapshot.stream_idle_timeout_seconds));
     reset({
       name: snapshot.name,
       api_key: "",
@@ -490,6 +493,16 @@ export function ProviderEditorDialog(props: ProviderEditorDialogProps) {
     }
   }
 
+  function resolveStreamIdleTimeoutSeconds() {
+    const trimmed = streamIdleTimeoutSeconds.trim();
+    if (!trimmed) return 0;
+    const value = Number(trimmed);
+    if (!Number.isFinite(value) || !Number.isInteger(value) || value < 0 || value > 3600) {
+      return undefined;
+    }
+    return value;
+  }
+
   async function save() {
     if (saving) return;
     const isCx2cc = authMode === "cx2cc";
@@ -508,6 +521,11 @@ export function ProviderEditorDialog(props: ProviderEditorDialogProps) {
     }
 
     const values: ProviderEditorDialogFormOutput = parsed.data;
+    const parsedStreamIdleTimeoutSeconds = resolveStreamIdleTimeoutSeconds();
+    if (parsedStreamIdleTimeoutSeconds === undefined) {
+      toast("流式空闲超时必须为 0-3600 秒");
+      return;
+    }
 
     let finalBaseUrls: string[] = [];
     let finalBaseUrlMode = baseUrlMode;
@@ -588,6 +606,7 @@ export function ProviderEditorDialog(props: ProviderEditorDialogProps) {
         limit_total_usd: values.limit_total_usd,
         tags,
         note: values.note,
+        stream_idle_timeout_seconds: parsedStreamIdleTimeoutSeconds,
         ...(cliKey === "claude" && authMode !== "oauth" ? { claude_models: claudeModels } : {}),
         source_provider_id: isCx2cc ? sourceProviderId : null,
         bridge_type: isCx2cc ? "cx2cc" : null,
@@ -616,6 +635,7 @@ export function ProviderEditorDialog(props: ProviderEditorDialogProps) {
         limit_total_usd: saved.limit_total_usd,
         tags: saved.tags,
         note: saved.note,
+        stream_idle_timeout_seconds: saved.stream_idle_timeout_seconds,
       });
       toast(mode === "create" ? "Provider 已保存" : "Provider 已更新");
 
@@ -740,6 +760,11 @@ export function ProviderEditorDialog(props: ProviderEditorDialogProps) {
 
     try {
       let targetProviderId = editingProviderId;
+      const parsedStreamIdleTimeoutSeconds = resolveStreamIdleTimeoutSeconds();
+      if (parsedStreamIdleTimeoutSeconds === undefined) {
+        toast("流式空闲超时必须为 0-3600 秒");
+        return;
+      }
 
       // In create mode, auto-save the provider first to obtain an ID.
       if (!targetProviderId) {
@@ -768,6 +793,7 @@ export function ProviderEditorDialog(props: ProviderEditorDialogProps) {
             ? Number(formValues.limit_monthly_usd)
             : null,
           limit_total_usd: formValues.limit_total_usd ? Number(formValues.limit_total_usd) : null,
+          stream_idle_timeout_seconds: parsedStreamIdleTimeoutSeconds,
         });
         if (!saved) {
           toast("自动保存 Provider 失败");
@@ -1228,6 +1254,22 @@ export function ProviderEditorDialog(props: ProviderEditorDialogProps) {
             </div>
           </>
         )}
+
+        <FormField
+          label="流式空闲超时覆盖（秒）"
+          hint="留空或 0 表示沿用全局设置；仅对当前 Provider 的流式请求生效。"
+        >
+          <Input
+            type="number"
+            min="0"
+            max="3600"
+            step="1"
+            placeholder="0"
+            value={streamIdleTimeoutSeconds}
+            onChange={(e) => setStreamIdleTimeoutSeconds(e.currentTarget.value)}
+            disabled={saving}
+          />
+        </FormField>
 
         <details className="group rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50/80 to-white shadow-sm open:ring-2 open:ring-accent/10 transition-all dark:border-slate-700 dark:from-slate-800/80 dark:to-slate-900">
           <summary className="flex cursor-pointer items-center justify-between px-5 py-4 select-none">

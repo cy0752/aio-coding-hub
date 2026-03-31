@@ -41,6 +41,7 @@ export type ProviderSummary = {
   oauth_last_error: string | null;
   source_provider_id: number | null;
   bridge_type: string | null;
+  stream_idle_timeout_seconds: number | null;
 };
 
 export async function providersList(cliKey: CliKey) {
@@ -76,7 +77,14 @@ export async function providerUpsert(input: {
   note?: string;
   source_provider_id?: number | null;
   bridge_type?: string | null;
+  stream_idle_timeout_seconds?: number | null;
 }) {
+  const streamIdleTimeoutSeconds = Object.prototype.hasOwnProperty.call(
+    input,
+    "stream_idle_timeout_seconds"
+  )
+    ? (input.stream_idle_timeout_seconds ?? 0)
+    : undefined;
   const payload = {
     providerId: input.provider_id ?? null,
     cliKey: input.cli_key,
@@ -100,6 +108,7 @@ export async function providerUpsert(input: {
     note: input.note ?? null,
     sourceProviderId: input.source_provider_id ?? null,
     bridgeType: input.bridge_type ?? null,
+    streamIdleTimeoutSeconds: streamIdleTimeoutSeconds as number | null,
   };
   const logPayload = {
     ...payload,

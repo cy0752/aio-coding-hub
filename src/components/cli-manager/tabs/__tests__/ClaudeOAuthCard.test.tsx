@@ -58,6 +58,7 @@ function makeProvider(overrides: Partial<ProviderSummary> = {}): ProviderSummary
     source_provider_id: null,
     bridge_type: null,
     ...overrides,
+    stream_idle_timeout_seconds: overrides.stream_idle_timeout_seconds ?? null,
   };
 }
 

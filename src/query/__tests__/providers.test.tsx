@@ -64,6 +64,7 @@ function makeProvider(
     oauth_last_error: partial.oauth_last_error ?? null,
     source_provider_id: partial.source_provider_id ?? null,
     bridge_type: partial.bridge_type ?? null,
+    stream_idle_timeout_seconds: partial.stream_idle_timeout_seconds ?? null,
   };
 }
 

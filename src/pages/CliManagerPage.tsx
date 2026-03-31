@@ -76,6 +76,7 @@ const DEFAULT_RECTIFIER: GatewayRectifierSettingsPatch = {
   intercept_anthropic_warmup_requests: true,
   enable_thinking_signature_rectifier: true,
   enable_thinking_budget_rectifier: true,
+  enable_billing_header_rectifier: true,
   enable_claude_metadata_user_id_injection: true,
   enable_response_fixer: true,
   response_fixer_fix_encoding: true,
@@ -215,6 +216,7 @@ export function CliManagerPage() {
       intercept_anthropic_warmup_requests: appSettings.intercept_anthropic_warmup_requests,
       enable_thinking_signature_rectifier: appSettings.enable_thinking_signature_rectifier,
       enable_thinking_budget_rectifier: appSettings.enable_thinking_budget_rectifier,
+      enable_billing_header_rectifier: appSettings.enable_billing_header_rectifier,
       enable_claude_metadata_user_id_injection:
         appSettings.enable_claude_metadata_user_id_injection,
       enable_response_fixer: appSettings.enable_response_fixer,
@@ -263,6 +265,7 @@ export function CliManagerPage() {
         intercept_anthropic_warmup_requests: updated.intercept_anthropic_warmup_requests,
         enable_thinking_signature_rectifier: updated.enable_thinking_signature_rectifier,
         enable_thinking_budget_rectifier: updated.enable_thinking_budget_rectifier,
+        enable_billing_header_rectifier: updated.enable_billing_header_rectifier,
         enable_claude_metadata_user_id_injection: updated.enable_claude_metadata_user_id_injection,
         enable_response_fixer: updated.enable_response_fixer,
         response_fixer_fix_encoding: updated.response_fixer_fix_encoding,

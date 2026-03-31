@@ -178,6 +178,7 @@ pub(super) struct ProviderCtx<'a> {
     pub(super) provider_base_url_base: &'a String,
     pub(super) provider_index: u32,
     pub(super) session_reuse: Option<bool>,
+    pub(super) stream_idle_timeout_seconds: Option<u32>,
 }
 
 pub(super) struct ProviderCtxOwned {
@@ -186,6 +187,7 @@ pub(super) struct ProviderCtxOwned {
     pub(super) provider_base_url_base: String,
     pub(super) provider_index: u32,
     pub(super) session_reuse: Option<bool>,
+    pub(super) stream_idle_timeout_seconds: Option<u32>,
 }
 
 impl<'a> From<ProviderCtx<'a>> for ProviderCtxOwned {
@@ -196,6 +198,7 @@ impl<'a> From<ProviderCtx<'a>> for ProviderCtxOwned {
             provider_base_url_base: ctx.provider_base_url_base.clone(),
             provider_index: ctx.provider_index,
             session_reuse: ctx.session_reuse,
+            stream_idle_timeout_seconds: ctx.stream_idle_timeout_seconds,
         }
     }
 }
@@ -239,6 +242,7 @@ pub(super) fn build_stream_finalize_ctx(
         provider_id: provider_ctx.provider_id,
         provider_name: provider_ctx.provider_name_base.clone(),
         base_url: provider_ctx.provider_base_url_base.clone(),
+        fake_200_detected: false,
     }
 }
 

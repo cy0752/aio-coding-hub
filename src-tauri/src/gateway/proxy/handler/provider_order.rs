@@ -92,6 +92,7 @@ mod tests {
             oauth_provider_type: None,
             source_provider_id: None,
             bridge_type: None,
+            stream_idle_timeout_seconds: None,
         }
     }
 

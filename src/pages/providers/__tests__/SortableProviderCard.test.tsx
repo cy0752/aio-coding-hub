@@ -58,6 +58,7 @@ function makeProvider(partial: Partial<ProviderSummary> = {}): ProviderSummary {
     source_provider_id: null,
     bridge_type: null,
     ...partial,
+    stream_idle_timeout_seconds: partial.stream_idle_timeout_seconds ?? null,
   };
 }
 

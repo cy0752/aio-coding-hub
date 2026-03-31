@@ -69,6 +69,7 @@ function makeProvider(partial: Partial<ProviderSummary> = {}): ProviderSummary {
     source_provider_id: null,
     bridge_type: null,
     ...partial,
+    stream_idle_timeout_seconds: partial.stream_idle_timeout_seconds ?? null,
   };
 }
 
@@ -96,6 +97,7 @@ function makeInitialValues(
     source_provider_id: null,
     bridge_type: null,
     ...partial,
+    stream_idle_timeout_seconds: partial.stream_idle_timeout_seconds ?? null,
   };
 }
 
@@ -209,6 +211,112 @@ describe("pages/providers/ProviderEditorDialog", () => {
     await waitFor(() => expect(vi.mocked(providerUpsert)).toHaveBeenCalledTimes(1));
     expect(onSaved).not.toHaveBeenCalled();
     expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it("passes stream idle timeout override when saving", async () => {
+    vi.mocked(providerUpsert).mockResolvedValue({
+      id: 3,
+      cli_key: "claude",
+      name: "Timeout Provider",
+      stream_idle_timeout_seconds: 120,
+    } as any);
+
+    render(
+      <ProviderEditorDialog
+        mode="create"
+        open={true}
+        cliKey="claude"
+        onSaved={vi.fn()}
+        onOpenChange={vi.fn()}
+      />
+    );
+
+    const dialog = within(screen.getByRole("dialog"));
+
+    fireEvent.change(dialog.getByPlaceholderText("default"), {
+      target: { value: "Timeout Provider" },
+    });
+    fireEvent.change(dialog.getByPlaceholderText("sk-…"), { target: { value: "sk-test" } });
+    fireEvent.change(dialog.getByPlaceholderText(/中转 endpoint/), {
+      target: { value: "https://example.com/v1" },
+    });
+    fireEvent.change(dialog.getByPlaceholderText("0"), {
+      target: { value: "120" },
+    });
+
+    fireEvent.click(dialog.getByRole("button", { name: "保存" }));
+
+    await waitFor(() =>
+      expect(vi.mocked(providerUpsert)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          stream_idle_timeout_seconds: 120,
+        })
+      )
+    );
+  });
+
+  it("clears existing stream idle timeout override when input is emptied", async () => {
+    vi.mocked(providerUpsert).mockResolvedValue({
+      id: 1,
+      cli_key: "claude",
+      name: "Existing",
+      stream_idle_timeout_seconds: null,
+    } as any);
+
+    render(
+      <ProviderEditorDialog
+        mode="edit"
+        open={true}
+        provider={makeProvider({ stream_idle_timeout_seconds: 90 })}
+        onSaved={vi.fn()}
+        onOpenChange={vi.fn()}
+      />
+    );
+
+    const dialog = within(screen.getByRole("dialog"));
+    fireEvent.change(dialog.getByPlaceholderText("0"), {
+      target: { value: "" },
+    });
+    fireEvent.click(dialog.getByRole("button", { name: "保存" }));
+
+    await waitFor(() =>
+      expect(vi.mocked(providerUpsert)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider_id: 1,
+          stream_idle_timeout_seconds: 0,
+        })
+      )
+    );
+  });
+
+  it("blocks invalid stream idle timeout override", async () => {
+    render(
+      <ProviderEditorDialog
+        mode="create"
+        open={true}
+        cliKey="claude"
+        onSaved={vi.fn()}
+        onOpenChange={vi.fn()}
+      />
+    );
+
+    const dialog = within(screen.getByRole("dialog"));
+
+    fireEvent.change(dialog.getByPlaceholderText("default"), {
+      target: { value: "Invalid Timeout Provider" },
+    });
+    fireEvent.change(dialog.getByPlaceholderText("sk-…"), { target: { value: "sk-test" } });
+    fireEvent.change(dialog.getByPlaceholderText(/中转 endpoint/), {
+      target: { value: "https://example.com/v1" },
+    });
+    fireEvent.change(dialog.getByPlaceholderText("0"), {
+      target: { value: "3601" },
+    });
+
+    fireEvent.click(dialog.getByRole("button", { name: "保存" }));
+
+    expect(vi.mocked(providerUpsert)).not.toHaveBeenCalled();
+    expect(vi.mocked(toast)).toHaveBeenCalledWith("流式空闲超时必须为 0-3600 秒");
   });
 
   it("prefills create mode from initial values and saves as a new provider", async () => {

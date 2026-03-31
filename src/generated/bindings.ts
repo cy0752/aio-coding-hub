@@ -80,6 +80,7 @@ export type AppSettings = {
   intercept_anthropic_warmup_requests: boolean;
   enable_thinking_signature_rectifier: boolean;
   enable_thinking_budget_rectifier: boolean;
+  enable_billing_header_rectifier: boolean;
   enable_codex_session_id_completion: boolean;
   enable_claude_metadata_user_id_injection: boolean;
   enable_cache_anomaly_monitor: boolean;
@@ -144,6 +145,7 @@ export type ProviderSummary = {
   oauth_last_error: string | null;
   source_provider_id: number | null;
   bridge_type: string | null;
+  stream_idle_timeout_seconds: number | null;
 };
 export type ProviderUpsertInput = {
   providerId: number | null;
@@ -168,6 +170,7 @@ export type ProviderUpsertInput = {
   note: string | null;
   sourceProviderId: number | null;
   bridgeType: string | null;
+  streamIdleTimeoutSeconds: number | null;
 };
 /**
  * Encapsulates all fields for the `settings_set` command.
@@ -192,6 +195,7 @@ export type SettingsUpdate = {
   interceptAnthropicWarmupRequests: boolean | null;
   enableThinkingSignatureRectifier: boolean | null;
   enableThinkingBudgetRectifier: boolean | null;
+  enableBillingHeaderRectifier: boolean | null;
   enableClaudeMetadataUserIdInjection: boolean | null;
   enableCacheAnomalyMonitor: boolean | null;
   enableTaskCompleteNotify: boolean | null;

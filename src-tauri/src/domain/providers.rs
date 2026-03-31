@@ -11,6 +11,7 @@ use std::collections::{HashMap, HashSet};
 const DEFAULT_PRIORITY: i64 = 100;
 const MAX_MODEL_NAME_LEN: usize = 200;
 const MAX_LIMIT_USD: f64 = 1_000_000_000.0;
+const MAX_STREAM_IDLE_TIMEOUT_SECONDS: u32 = 60 * 60;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -76,6 +77,7 @@ pub struct ProviderUpsertParams {
     pub note: Option<String>,
     pub source_provider_id: Option<i64>,
     pub bridge_type: Option<String>,
+    pub stream_idle_timeout_seconds: Option<u32>,
 }
 
 fn parse_reset_time_hms(input: &str) -> Option<(u8, u8, u8)> {
@@ -130,6 +132,25 @@ fn normalize_reset_time_hms_strict(
         return Err(format!("SEC_INVALID_INPUT: {field} must be HH:mm[:ss]").into());
     };
     Ok(format!("{h:02}:{m:02}:{s:02}"))
+}
+
+fn normalize_stream_idle_timeout_seconds(
+    value: Option<u32>,
+) -> crate::shared::error::AppResult<Option<u32>> {
+    match value {
+        None | Some(0) => Ok(None),
+        Some(v) if v <= MAX_STREAM_IDLE_TIMEOUT_SECONDS => Ok(Some(v)),
+        Some(v) => Err(format!(
+            "SEC_INVALID_INPUT: stream_idle_timeout_seconds must be within [0, {MAX_STREAM_IDLE_TIMEOUT_SECONDS}], got {v}"
+        )
+        .into()),
+    }
+}
+
+fn parse_positive_optional_u32(value: Option<i64>) -> Option<u32> {
+    value
+        .and_then(|raw| u32::try_from(raw).ok())
+        .filter(|raw| *raw > 0)
 }
 
 fn validate_limit_usd(
@@ -317,6 +338,7 @@ pub struct ProviderSummary {
     pub oauth_last_error: Option<String>,
     pub source_provider_id: Option<i64>,
     pub bridge_type: Option<String>,
+    pub stream_idle_timeout_seconds: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -339,6 +361,7 @@ pub(crate) struct ProviderForGateway {
     pub source_provider_id: Option<i64>,
     #[allow(dead_code)] // Will be read when failover_loop uses bridge_type for dispatch.
     pub bridge_type: Option<String>,
+    pub stream_idle_timeout_seconds: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -513,6 +536,9 @@ fn row_to_summary(row: &rusqlite::Row<'_>) -> Result<ProviderSummary, rusqlite::
         oauth_last_error: row.get("oauth_last_error")?,
         source_provider_id: decoded.source_provider_id,
         bridge_type: decoded.bridge_type,
+        stream_idle_timeout_seconds: parse_positive_optional_u32(
+            row.get("stream_idle_timeout_seconds").unwrap_or(None),
+        ),
     })
 }
 
@@ -560,7 +586,8 @@ SELECT
   oauth_expires_at,
   oauth_last_error,
   source_provider_id,
-  bridge_type
+  bridge_type,
+  stream_idle_timeout_seconds
 FROM providers
 WHERE id = ?1
 "#,
@@ -809,7 +836,8 @@ SELECT
   oauth_expires_at,
   oauth_last_error,
   source_provider_id,
-  bridge_type
+  bridge_type,
+  stream_idle_timeout_seconds
 FROM providers
 WHERE cli_key = ?1
 ORDER BY sort_order ASC, id DESC
@@ -855,6 +883,9 @@ fn map_gateway_provider_row(
         oauth_provider_type: decoded.oauth_provider_type,
         source_provider_id: decoded.source_provider_id,
         bridge_type: decoded.bridge_type,
+        stream_idle_timeout_seconds: parse_positive_optional_u32(
+            row.get("stream_idle_timeout_seconds").unwrap_or(None),
+        ),
     })
 }
 
@@ -885,7 +916,8 @@ SELECT
   p.auth_mode,
   p.oauth_provider_type,
   p.source_provider_id,
-  p.bridge_type
+  p.bridge_type,
+  p.stream_idle_timeout_seconds
 FROM sort_mode_providers mp
 JOIN providers p ON p.id = mp.provider_id
 WHERE mp.mode_id = ?1
@@ -936,7 +968,8 @@ SELECT
   auth_mode,
   oauth_provider_type,
   source_provider_id,
-  bridge_type
+  bridge_type,
+  stream_idle_timeout_seconds
 FROM providers
 WHERE cli_key = ?1
   AND enabled = 1
@@ -1045,7 +1078,8 @@ SELECT
   auth_mode,
   oauth_provider_type,
   source_provider_id,
-  bridge_type
+  bridge_type,
+  stream_idle_timeout_seconds
 FROM providers
 WHERE id = ?1 AND enabled = 1 AND source_provider_id IS NULL AND cli_key = 'codex'
 "#,
@@ -1096,6 +1130,7 @@ pub fn upsert(
         note,
         source_provider_id,
         bridge_type,
+        stream_idle_timeout_seconds,
     } = input;
     let cli_key = cli_key.trim();
     validate_cli_key(cli_key)?;
@@ -1180,6 +1215,9 @@ pub fn upsert(
 
     let base_urls_json =
         serde_json::to_string(&base_urls).map_err(|e| format!("SYSTEM_ERROR: {e}"))?;
+    let stream_idle_timeout_seconds_specified = stream_idle_timeout_seconds.is_some();
+    let stream_idle_timeout_seconds =
+        normalize_stream_idle_timeout_seconds(stream_idle_timeout_seconds)?;
 
     let api_key = api_key.as_deref().map(str::trim).filter(|v| !v.is_empty());
 
@@ -1270,9 +1308,10 @@ INSERT INTO providers(
   note,
   source_provider_id,
   bridge_type,
+  stream_idle_timeout_seconds,
   created_at,
   updated_at
-) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, '{}', '{}', ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, '{}', '{}', ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)
 "#,
                 params![
                     cli_key,
@@ -1298,6 +1337,7 @@ INSERT INTO providers(
                     note_value,
                     source_provider_id,
                     bridge_type,
+                    stream_idle_timeout_seconds,
                     now,
                     now
                 ],
@@ -1331,12 +1371,13 @@ INSERT INTO providers(
                 String,
                 String,
                 String,
+                Option<i64>,
             );
             let existing: Option<ExistingProviderRow> = tx
                 .query_row(
-                    "SELECT cli_key, api_key_plaintext, priority, claude_models_json, auth_mode, daily_reset_mode, daily_reset_time, tags_json, note FROM providers WHERE id = ?1",
+                    "SELECT cli_key, api_key_plaintext, priority, claude_models_json, auth_mode, daily_reset_mode, daily_reset_time, tags_json, note, stream_idle_timeout_seconds FROM providers WHERE id = ?1",
                     params![id],
-                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?, row.get(7)?, row.get(8)?)),
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?, row.get(7)?, row.get(8)?, row.get(9)?)),
                 )
                 .optional()
                 .map_err(|e| db_err!("failed to query provider: {e}"))?;
@@ -1351,6 +1392,7 @@ INSERT INTO providers(
                 existing_daily_reset_time_raw,
                 existing_tags_json,
                 existing_note,
+                existing_stream_idle_timeout_seconds,
             )) = existing
             else {
                 return Err("DB_NOT_FOUND: provider not found".to_string().into());
@@ -1431,6 +1473,11 @@ INSERT INTO providers(
                 }
                 None => existing_note,
             };
+            let next_stream_idle_timeout_seconds = if stream_idle_timeout_seconds_specified {
+                stream_idle_timeout_seconds
+            } else {
+                parse_positive_optional_u32(existing_stream_idle_timeout_seconds)
+            };
 
             tx.execute(
                 r#"
@@ -1459,8 +1506,9 @@ SET
   note = ?19,
   source_provider_id = ?20,
   bridge_type = ?21,
-  updated_at = ?22
-WHERE id = ?23
+  stream_idle_timeout_seconds = ?22,
+  updated_at = ?23
+WHERE id = ?24
 "#,
                 params![
                     name,
@@ -1484,6 +1532,7 @@ WHERE id = ?23
                     next_note,
                     source_provider_id,
                     bridge_type,
+                    next_stream_idle_timeout_seconds,
                     now,
                     id
                 ],

@@ -10,6 +10,8 @@ pub(super) fn finalize_circuit_and_session(
 ) -> Option<&'static str> {
     let effective_error_category = if error_code == Some(GatewayErrorCode::StreamAborted.as_str()) {
         Some(ErrorCategory::ClientAbort.as_str())
+    } else if error_code == Some(GatewayErrorCode::Fake200.as_str()) {
+        Some(ErrorCategory::ProviderError.as_str())
     } else {
         ctx.error_category
     };
@@ -28,7 +30,7 @@ pub(super) fn finalize_circuit_and_session(
         );
     }
 
-    if error_code.is_none() && (200..300).contains(&ctx.status) {
+    if error_code.is_none() && (200..300).contains(&ctx.status) && !ctx.fake_200_detected {
         let _ = provider_router::record_success_and_emit_transition(
             provider_router::RecordCircuitArgs::from_stream_ctx(ctx, now_unix),
         );
@@ -41,6 +43,12 @@ pub(super) fn finalize_circuit_and_session(
                 now_unix,
             );
         }
+    } else if ctx.fake_200_detected && (200..300).contains(&ctx.status) {
+        // Fake 200: upstream returned HTTP 200 but body contained an error payload.
+        // Record as failure for circuit breaker; do not bind session.
+        let _ = provider_router::record_failure_and_emit_transition(
+            provider_router::RecordCircuitArgs::from_stream_ctx(ctx, now_unix),
+        );
     } else if effective_error_category == Some(ErrorCategory::ProviderError.as_str()) {
         let _ = provider_router::record_failure_and_emit_transition(
             provider_router::RecordCircuitArgs::from_stream_ctx(ctx, now_unix),
