@@ -1,4 +1,4 @@
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { GatewayAvailability } from "../../hooks/useGatewayMeta";
@@ -6,6 +6,10 @@ import { gatewayKeys } from "../../query/keys";
 import { useTheme } from "../../hooks/useTheme";
 import { logToConsole } from "../../services/consoleLog";
 import { gatewayStart, gatewayStop, type GatewayStatus } from "../../services/gateway";
+import {
+  readHomeOverviewLogsPrimaryLayoutFromStorage,
+  writeHomeOverviewLogsPrimaryLayoutToStorage,
+} from "../../services/homeOverviewLayout";
 import type { HomeUsagePeriod } from "../../services/settings";
 import { Button } from "../../ui/Button";
 import { Card } from "../../ui/Card";
@@ -125,6 +129,9 @@ export function SettingsMainColumn({
 }: SettingsMainColumnProps) {
   const { theme, setTheme } = useTheme();
   const queryClient = useQueryClient();
+  const [homeOverviewLogsPrimaryLayout, setHomeOverviewLogsPrimaryLayout] = useState(() =>
+    readHomeOverviewLogsPrimaryLayoutFromStorage()
+  );
   const settingsInputsDisabled = !settingsReady || settingsWriteBlocked || settingsSaving;
   const gatewayRestartDisabled =
     gatewayAvailable !== "available" || settingsWriteBlocked || settingsSaving;
@@ -459,12 +466,12 @@ export function SettingsMainColumn({
                 </div>
               </SettingsRow>
               <SettingsRow label="首页概览排序">
-                <div className="w-full max-w-md">
+                <div className="w-full sm:w-auto sm:max-w-full">
                   <HomeOverviewTabOrderEditor />
                 </div>
               </SettingsRow>
               <SettingsRow label="CLI 优先顺序">
-                <div className="w-full max-w-md">
+                <div className="w-full sm:w-auto sm:max-w-full">
                   <CliPriorityOrderEditor
                     order={cliPriorityOrder}
                     onChange={(nextOrder) => {
@@ -509,6 +516,24 @@ export function SettingsMainColumn({
                   />
                 </SettingsRow>
               ))}
+              <SettingsRow
+                label={
+                  <span className="inline-flex items-center gap-2">
+                    <span>首页个性化布局</span>
+                    <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+                      测试
+                    </span>
+                  </span>
+                }
+              >
+                <Switch
+                  checked={homeOverviewLogsPrimaryLayout}
+                  onCheckedChange={(next) => {
+                    setHomeOverviewLogsPrimaryLayout(next);
+                    writeHomeOverviewLogsPrimaryLayoutToStorage(next);
+                  }}
+                />
+              </SettingsRow>
             </div>
           </div>
         </div>
