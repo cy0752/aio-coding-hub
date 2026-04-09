@@ -77,65 +77,65 @@ pub(super) fn rebind_codex_manifest_after_home_change<R: tauri::Runtime>(
             .is_some_and(|origin| is_proxy_config_applied(app, origin))
         || is_codex_proxy_target_state(app);
 
+    let origin = Some(base_origin.to_string());
+    let rebind_msg = |live: bool| {
+        if live {
+            "已重绑 Codex 目录并写入当前网关配置".to_string()
+        } else {
+            "已重绑 Codex 目录基线，待网关启动后接管".to_string()
+        }
+    };
+
     if target_already_proxy_managed {
         let target_snapshots = snapshot_target_files(&captured)?;
         manifest = build_manifest_with_current_target_paths(app, &manifest, base_origin)?;
 
         if let Err(err) = write_manifest(app, "codex", &manifest) {
-            return Ok(CliProxyResult {
+            return Ok(CliProxyResult::failure(
                 trace_id,
-                cli_key: "codex".to_string(),
-                enabled: true,
-                ok: false,
-                error_code: Some("CLI_PROXY_REBIND_MANIFEST_WRITE_FAILED".to_string()),
-                message: err.to_string(),
-                base_origin: Some(base_origin.to_string()),
-            });
+                "codex",
+                true,
+                "CLI_PROXY_REBIND_MANIFEST_WRITE_FAILED",
+                err.to_string(),
+                origin,
+            ));
         }
 
         if let Err(err) = super::restore_backups_exactly_from_manifest(app, &manifest) {
             let _ = write_manifest(app, "codex", &previous_manifest);
             let _ = restore_file_snapshots(&target_snapshots);
-            return Ok(CliProxyResult {
+            return Ok(CliProxyResult::failure(
                 trace_id,
-                cli_key: "codex".to_string(),
-                enabled: true,
-                ok: false,
-                error_code: Some("CLI_PROXY_REBIND_RESTORE_FAILED".to_string()),
-                message: err.to_string(),
-                base_origin: Some(base_origin.to_string()),
-            });
+                "codex",
+                true,
+                "CLI_PROXY_REBIND_RESTORE_FAILED",
+                err.to_string(),
+                origin,
+            ));
         }
 
         if apply_live {
             if let Err(err) = apply_proxy_config(app, "codex", base_origin) {
                 let _ = write_manifest(app, "codex", &previous_manifest);
                 let _ = restore_file_snapshots(&target_snapshots);
-                return Ok(CliProxyResult {
+                return Ok(CliProxyResult::failure(
                     trace_id,
-                    cli_key: "codex".to_string(),
-                    enabled: true,
-                    ok: false,
-                    error_code: Some("CLI_PROXY_REBIND_APPLY_FAILED".to_string()),
-                    message: err.to_string(),
-                    base_origin: Some(base_origin.to_string()),
-                });
+                    "codex",
+                    true,
+                    "CLI_PROXY_REBIND_APPLY_FAILED",
+                    err.to_string(),
+                    origin,
+                ));
             }
         }
 
-        return Ok(CliProxyResult {
+        return Ok(CliProxyResult::success(
             trace_id,
-            cli_key: "codex".to_string(),
-            enabled: true,
-            ok: true,
-            error_code: None,
-            message: if apply_live {
-                "已重绑 Codex 目录并写入当前网关配置".to_string()
-            } else {
-                "已重绑 Codex 目录基线，待网关启动后接管".to_string()
-            },
-            base_origin: Some(base_origin.to_string()),
-        });
+            "codex",
+            true,
+            rebind_msg(apply_live),
+            origin,
+        ));
     }
 
     let backup_snapshots = snapshot_backup_files(app, "codex", &captured)?;
@@ -146,15 +146,14 @@ pub(super) fn rebind_codex_manifest_after_home_change<R: tauri::Runtime>(
 
     if let Err(err) = write_manifest(app, "codex", &manifest) {
         let _ = restore_file_snapshots(&backup_snapshots);
-        return Ok(CliProxyResult {
+        return Ok(CliProxyResult::failure(
             trace_id,
-            cli_key: "codex".to_string(),
-            enabled: true,
-            ok: false,
-            error_code: Some("CLI_PROXY_REBIND_MANIFEST_WRITE_FAILED".to_string()),
-            message: err.to_string(),
-            base_origin: Some(base_origin.to_string()),
-        });
+            "codex",
+            true,
+            "CLI_PROXY_REBIND_MANIFEST_WRITE_FAILED",
+            err.to_string(),
+            origin,
+        ));
     }
 
     if apply_live {
@@ -162,31 +161,24 @@ pub(super) fn rebind_codex_manifest_after_home_change<R: tauri::Runtime>(
             let _ = write_manifest(app, "codex", &previous_manifest);
             let _ = restore_file_snapshots(&backup_snapshots);
             let _ = restore_file_snapshots(&target_snapshots);
-            return Ok(CliProxyResult {
+            return Ok(CliProxyResult::failure(
                 trace_id,
-                cli_key: "codex".to_string(),
-                enabled: true,
-                ok: false,
-                error_code: Some("CLI_PROXY_REBIND_APPLY_FAILED".to_string()),
-                message: err.to_string(),
-                base_origin: Some(base_origin.to_string()),
-            });
+                "codex",
+                true,
+                "CLI_PROXY_REBIND_APPLY_FAILED",
+                err.to_string(),
+                origin,
+            ));
         }
     }
 
-    Ok(CliProxyResult {
+    Ok(CliProxyResult::success(
         trace_id,
-        cli_key: "codex".to_string(),
-        enabled: true,
-        ok: true,
-        error_code: None,
-        message: if apply_live {
-            "已重绑 Codex 目录并写入当前网关配置".to_string()
-        } else {
-            "已重绑 Codex 目录基线，待网关启动后接管".to_string()
-        },
-        base_origin: Some(base_origin.to_string()),
-    })
+        "codex",
+        true,
+        rebind_msg(apply_live),
+        origin,
+    ))
 }
 
 /// Merge-restore Codex `auth.json`: only revert the proxy-managed keys
@@ -574,7 +566,10 @@ pub(super) fn upsert_model_provider_base_table(
     insert_model_provider_section(lines, insert_at, provider_key, base_url);
 }
 
-pub(super) fn upsert_root_model_provider(lines: &mut Vec<String>, value: &str) {
+/// Upsert a root-level `key = "value"` line before any `[table]` header.
+/// If `trailing_blank` is true and the inserted line is followed by a non-blank
+/// line, an empty separator line is added after it.
+fn upsert_root_toml_key(lines: &mut Vec<String>, key: &str, value: &str, trailing_blank: bool) {
     let first_table = lines
         .iter()
         .position(|l| l.trim().starts_with('['))
@@ -583,9 +578,9 @@ pub(super) fn upsert_root_model_provider(lines: &mut Vec<String>, value: &str) {
     if let Some(line) = lines
         .iter_mut()
         .take(first_table)
-        .find(|line| line.trim_start().starts_with("model_provider"))
+        .find(|line| line.trim_start().starts_with(key))
     {
-        *line = format!("model_provider = \"{value}\"");
+        *line = format!("{key} = \"{value}\"");
         return;
     }
 
@@ -599,38 +594,18 @@ pub(super) fn upsert_root_model_provider(lines: &mut Vec<String>, value: &str) {
         break;
     }
 
-    lines.insert(insert_at, format!("model_provider = \"{value}\""));
-    if insert_at + 1 < lines.len() && !lines[insert_at + 1].trim().is_empty() {
+    lines.insert(insert_at, format!("{key} = \"{value}\""));
+    if trailing_blank && insert_at + 1 < lines.len() && !lines[insert_at + 1].trim().is_empty() {
         lines.insert(insert_at + 1, String::new());
     }
 }
 
+pub(super) fn upsert_root_model_provider(lines: &mut Vec<String>, value: &str) {
+    upsert_root_toml_key(lines, "model_provider", value, true);
+}
+
 pub(super) fn upsert_root_preferred_auth_method(lines: &mut Vec<String>, value: &str) {
-    let first_table = lines
-        .iter()
-        .position(|l| l.trim().starts_with('['))
-        .unwrap_or(lines.len());
-
-    if let Some(line) = lines
-        .iter_mut()
-        .take(first_table)
-        .find(|line| line.trim_start().starts_with("preferred_auth_method"))
-    {
-        *line = format!("preferred_auth_method = \"{value}\"");
-        return;
-    }
-
-    let mut insert_at = 0;
-    while insert_at < first_table {
-        let trimmed = lines[insert_at].trim_start();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            insert_at += 1;
-            continue;
-        }
-        break;
-    }
-
-    lines.insert(insert_at, format!("preferred_auth_method = \"{value}\""));
+    upsert_root_toml_key(lines, "preferred_auth_method", value, false);
 }
 
 pub(super) fn upsert_windows_sandbox(lines: &mut Vec<String>) {
@@ -787,44 +762,40 @@ pub(super) fn rebind_codex_home_after_change<R: tauri::Runtime>(
     }
 
     let trace_id = super::new_trace_id("cli-proxy-codex-home-rebind");
+    let origin = Some(base_origin.to_string());
     let Some(manifest) = super::read_manifest(app, "codex")? else {
-        return Ok(CliProxyResult {
+        return Ok(CliProxyResult::success(
             trace_id,
-            cli_key: "codex".to_string(),
-            enabled: false,
-            ok: true,
-            error_code: None,
-            message: "Codex 代理未启用，无需重绑".to_string(),
-            base_origin: Some(base_origin.to_string()),
-        });
+            "codex",
+            false,
+            "Codex 代理未启用，无需重绑".to_string(),
+            origin,
+        ));
     };
 
     if !manifest.enabled {
-        return Ok(CliProxyResult {
+        return Ok(CliProxyResult::success(
             trace_id,
-            cli_key: "codex".to_string(),
-            enabled: false,
-            ok: true,
-            error_code: None,
-            message: "Codex 代理未启用，无需重绑".to_string(),
-            base_origin: Some(base_origin.to_string()),
-        });
+            "codex",
+            false,
+            "Codex 代理未启用，无需重绑".to_string(),
+            origin,
+        ));
     }
 
     if !super::manifest_target_paths_changed(app, &manifest)? {
-        return Ok(CliProxyResult {
+        let msg = if apply_live {
+            "Codex 目录未变化，无需重绑"
+        } else {
+            "Codex 目录未变化，待网关启动后按现有配置接管"
+        };
+        return Ok(CliProxyResult::success(
             trace_id,
-            cli_key: "codex".to_string(),
-            enabled: true,
-            ok: true,
-            error_code: None,
-            message: if apply_live {
-                "Codex 目录未变化，无需重绑".to_string()
-            } else {
-                "Codex 目录未变化，待网关启动后按现有配置接管".to_string()
-            },
-            base_origin: Some(base_origin.to_string()),
-        });
+            "codex",
+            true,
+            msg.to_string(),
+            origin,
+        ));
     }
 
     rebind_codex_manifest_after_home_change(app, manifest, base_origin, apply_live, trace_id)

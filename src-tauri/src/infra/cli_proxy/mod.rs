@@ -39,6 +39,45 @@ pub struct CliProxyResult {
     pub base_origin: Option<String>,
 }
 
+impl CliProxyResult {
+    fn success(
+        trace_id: String,
+        cli_key: &str,
+        enabled: bool,
+        message: String,
+        base_origin: Option<String>,
+    ) -> Self {
+        Self {
+            trace_id,
+            cli_key: cli_key.to_string(),
+            enabled,
+            ok: true,
+            error_code: None,
+            message,
+            base_origin,
+        }
+    }
+
+    fn failure(
+        trace_id: String,
+        cli_key: &str,
+        enabled: bool,
+        error_code: &str,
+        message: String,
+        base_origin: Option<String>,
+    ) -> Self {
+        Self {
+            trace_id,
+            cli_key: cli_key.to_string(),
+            enabled,
+            ok: false,
+            error_code: Some(error_code.to_string()),
+            message,
+            base_origin,
+        }
+    }
+}
+
 // -- Internal types ---------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -412,10 +451,9 @@ fn backup_for_enable<R: tauri::Runtime>(
 
     let mut entries = Vec::with_capacity(targets.len());
     for t in targets {
-        let existed = t.path.exists();
-        let backup_rel = if existed {
-            let bytes = std::fs::read(&t.path)
-                .map_err(|e| format!("failed to read {}: {e}", t.path.display()))?;
+        let read_bytes = read_optional_file(&t.path)?;
+        let existed = read_bytes.is_some();
+        let backup_rel = if let Some(bytes) = read_bytes {
             let backup_path = files_dir.join(t.backup_name);
             write_file_atomic(&backup_path, &bytes)?;
             Some(t.backup_name.to_string())
@@ -453,14 +491,7 @@ fn capture_current_target_state<R: tauri::Runtime>(
     let mut captured = Vec::with_capacity(targets.len());
 
     for target in targets {
-        let backup_bytes = if target.path.exists() {
-            Some(
-                std::fs::read(&target.path)
-                    .map_err(|e| format!("failed to read {}: {e}", target.path.display()))?,
-            )
-        } else {
-            None
-        };
+        let backup_bytes = read_optional_file(&target.path)?;
 
         captured.push(PendingBackupEntry {
             kind: target.kind.to_string(),
@@ -516,11 +547,7 @@ fn write_captured_backups<R: tauri::Runtime>(
 }
 
 fn snapshot_file(path: &Path) -> crate::shared::error::AppResult<FileSnapshot> {
-    let bytes = if path.exists() {
-        Some(std::fs::read(path).map_err(|e| format!("failed to read {}: {e}", path.display()))?)
-    } else {
-        None
-    };
+    let bytes = read_optional_file(path)?;
 
     Ok(FileSnapshot {
         path: path.to_path_buf(),
@@ -745,6 +772,7 @@ pub fn set_enabled<R: tauri::Runtime>(
 
     if enabled {
         let should_backup = existing.as_ref().map(|m| !m.enabled).unwrap_or(true);
+        let origin = Some(base_origin.to_string());
         let mut manifest = match if should_backup {
             backup_for_enable(app, cli_key, base_origin, existing.clone())
         } else {
@@ -752,15 +780,14 @@ pub fn set_enabled<R: tauri::Runtime>(
         } {
             Ok(m) => m,
             Err(err) => {
-                return Ok(CliProxyResult {
+                return Ok(CliProxyResult::failure(
                     trace_id,
-                    cli_key: cli_key.to_string(),
-                    enabled: false,
-                    ok: false,
-                    error_code: Some("CLI_PROXY_BACKUP_FAILED".to_string()),
-                    message: err.to_string(),
-                    base_origin: Some(base_origin.to_string()),
-                });
+                    cli_key,
+                    false,
+                    "CLI_PROXY_BACKUP_FAILED",
+                    err.to_string(),
+                    origin,
+                ));
             }
         };
 
@@ -770,15 +797,14 @@ pub fn set_enabled<R: tauri::Runtime>(
             manifest.base_origin = Some(base_origin.to_string());
             manifest.updated_at = now_unix_seconds();
             if let Err(err) = write_manifest(app, cli_key, &manifest) {
-                return Ok(CliProxyResult {
+                return Ok(CliProxyResult::failure(
                     trace_id,
-                    cli_key: cli_key.to_string(),
-                    enabled: false,
-                    ok: false,
-                    error_code: Some("CLI_PROXY_MANIFEST_WRITE_FAILED".to_string()),
-                    message: err.to_string(),
-                    base_origin: Some(base_origin.to_string()),
-                });
+                    cli_key,
+                    false,
+                    "CLI_PROXY_MANIFEST_WRITE_FAILED",
+                    err.to_string(),
+                    origin,
+                ));
             }
         }
 
@@ -788,26 +814,23 @@ pub fn set_enabled<R: tauri::Runtime>(
                 manifest.base_origin = Some(base_origin.to_string());
                 manifest.updated_at = now_unix_seconds();
                 if let Err(err) = write_manifest(app, cli_key, &manifest) {
-                    return Ok(CliProxyResult {
+                    return Ok(CliProxyResult::failure(
                         trace_id,
-                        cli_key: cli_key.to_string(),
-                        enabled: true,
-                        ok: false,
-                        error_code: Some("CLI_PROXY_MANIFEST_WRITE_FAILED".to_string()),
-                        message: err.to_string(),
-                        base_origin: Some(base_origin.to_string()),
-                    });
+                        cli_key,
+                        true,
+                        "CLI_PROXY_MANIFEST_WRITE_FAILED",
+                        err.to_string(),
+                        origin,
+                    ));
                 }
 
-                Ok(CliProxyResult {
+                Ok(CliProxyResult::success(
                     trace_id,
-                    cli_key: cli_key.to_string(),
-                    enabled: true,
-                    ok: true,
-                    error_code: None,
-                    message: "已开启代理：已备份直连配置并写入网关地址".to_string(),
-                    base_origin: Some(base_origin.to_string()),
-                })
+                    cli_key,
+                    true,
+                    "已开启代理：已备份直连配置并写入网关地址".to_string(),
+                    origin,
+                ))
             }
             Err(err) => {
                 // Best-effort rollback if we just created a new snapshot.
@@ -818,29 +841,27 @@ pub fn set_enabled<R: tauri::Runtime>(
                     let _ = write_manifest(app, cli_key, &manifest);
                 }
 
-                Ok(CliProxyResult {
+                Ok(CliProxyResult::failure(
                     trace_id,
-                    cli_key: cli_key.to_string(),
-                    enabled: false,
-                    ok: false,
-                    error_code: Some("CLI_PROXY_ENABLE_FAILED".to_string()),
-                    message: err.to_string(),
-                    base_origin: Some(base_origin.to_string()),
-                })
+                    cli_key,
+                    false,
+                    "CLI_PROXY_ENABLE_FAILED",
+                    err.to_string(),
+                    origin,
+                ))
             }
         };
     }
 
     let Some(mut manifest) = existing else {
-        return Ok(CliProxyResult {
+        return Ok(CliProxyResult::failure(
             trace_id,
-            cli_key: cli_key.to_string(),
-            enabled: false,
-            ok: false,
-            error_code: Some("CLI_PROXY_NO_BACKUP".to_string()),
-            message: "未找到备份，无法自动恢复；请手动处理".to_string(),
-            base_origin: Some(base_origin.to_string()),
-        });
+            cli_key,
+            false,
+            "CLI_PROXY_NO_BACKUP",
+            "未找到备份，无法自动恢复；请手动处理".to_string(),
+            Some(base_origin.to_string()),
+        ));
     };
 
     match restore_from_manifest(app, &manifest) {
@@ -849,25 +870,22 @@ pub fn set_enabled<R: tauri::Runtime>(
             manifest.updated_at = now_unix_seconds();
             let _ = write_manifest(app, cli_key, &manifest);
 
-            Ok(CliProxyResult {
+            Ok(CliProxyResult::success(
                 trace_id,
-                cli_key: cli_key.to_string(),
-                enabled: false,
-                ok: true,
-                error_code: None,
-                message: "已关闭代理：已恢复备份直连配置".to_string(),
-                base_origin: manifest.base_origin.clone(),
-            })
+                cli_key,
+                false,
+                "已关闭代理：已恢复备份直连配置".to_string(),
+                manifest.base_origin.clone(),
+            ))
         }
-        Err(err) => Ok(CliProxyResult {
+        Err(err) => Ok(CliProxyResult::failure(
             trace_id,
-            cli_key: cli_key.to_string(),
-            enabled: manifest.enabled,
-            ok: false,
-            error_code: Some("CLI_PROXY_DISABLE_FAILED".to_string()),
-            message: err.to_string(),
-            base_origin: manifest.base_origin.clone(),
-        }),
+            cli_key,
+            manifest.enabled,
+            "CLI_PROXY_DISABLE_FAILED",
+            err.to_string(),
+            manifest.base_origin.clone(),
+        )),
     }
 }
 
@@ -897,24 +915,21 @@ pub fn startup_repair_incomplete_enable<R: tauri::Runtime>(
         manifest.enabled = true;
         manifest.updated_at = now_unix_seconds();
         match write_manifest(app, cli_key, &manifest) {
-            Ok(()) => out.push(CliProxyResult {
+            Ok(()) => out.push(CliProxyResult::success(
                 trace_id,
-                cli_key: cli_key.to_string(),
-                enabled: true,
-                ok: true,
-                error_code: None,
-                message: "启动自愈：已修复异常中断导致的启用状态不一致".to_string(),
-                base_origin: Some(base_origin),
-            }),
-            Err(err) => out.push(CliProxyResult {
+                cli_key,
+                true,
+                "启动自愈：已修复异常中断导致的启用状态不一致".to_string(),
+                Some(base_origin),
+            )),
+            Err(err) => out.push(CliProxyResult::failure(
                 trace_id,
-                cli_key: cli_key.to_string(),
-                enabled: false,
-                ok: false,
-                error_code: Some("CLI_PROXY_STARTUP_REPAIR_FAILED".to_string()),
-                message: err.to_string(),
-                base_origin: Some(base_origin),
-            }),
+                cli_key,
+                false,
+                "CLI_PROXY_STARTUP_REPAIR_FAILED",
+                err.to_string(),
+                Some(base_origin),
+            )),
         }
     }
 
@@ -960,30 +975,26 @@ pub fn sync_enabled<R: tauri::Runtime>(
                 manifest.updated_at = now_unix_seconds();
                 write_manifest(app, cli_key, &manifest)?;
             }
-            out.push(CliProxyResult {
+            out.push(CliProxyResult::success(
                 trace_id,
-                cli_key: cli_key.to_string(),
-                enabled: true,
-                ok: true,
-                error_code: None,
-                message: "已更新代理目标端口，待网关启动后接管".to_string(),
-                base_origin: Some(base_origin.to_string()),
-            });
+                cli_key,
+                true,
+                "已更新代理目标端口，待网关启动后接管".to_string(),
+                Some(base_origin.to_string()),
+            ));
             continue;
         }
 
         if manifest.base_origin.as_deref() == Some(base_origin)
             && is_proxy_config_applied(app, cli_key, base_origin)
         {
-            out.push(CliProxyResult {
+            out.push(CliProxyResult::success(
                 trace_id,
-                cli_key: cli_key.to_string(),
-                enabled: true,
-                ok: true,
-                error_code: None,
-                message: "已是最新，无需同步".to_string(),
-                base_origin: Some(base_origin.to_string()),
-            });
+                cli_key,
+                true,
+                "已是最新，无需同步".to_string(),
+                Some(base_origin.to_string()),
+            ));
             continue;
         }
 
@@ -992,26 +1003,23 @@ pub fn sync_enabled<R: tauri::Runtime>(
                 manifest.base_origin = Some(base_origin.to_string());
                 manifest.updated_at = now_unix_seconds();
                 write_manifest(app, cli_key, &manifest)?;
-                out.push(CliProxyResult {
+                out.push(CliProxyResult::success(
                     trace_id,
-                    cli_key: cli_key.to_string(),
-                    enabled: true,
-                    ok: true,
-                    error_code: None,
-                    message: "已同步代理配置到新端口".to_string(),
-                    base_origin: Some(base_origin.to_string()),
-                });
+                    cli_key,
+                    true,
+                    "已同步代理配置到新端口".to_string(),
+                    Some(base_origin.to_string()),
+                ));
             }
             Err(err) => {
-                out.push(CliProxyResult {
+                out.push(CliProxyResult::failure(
                     trace_id,
-                    cli_key: cli_key.to_string(),
-                    enabled: true,
-                    ok: false,
-                    error_code: Some("CLI_PROXY_SYNC_FAILED".to_string()),
-                    message: err.to_string(),
-                    base_origin: Some(base_origin.to_string()),
-                });
+                    cli_key,
+                    true,
+                    "CLI_PROXY_SYNC_FAILED",
+                    err.to_string(),
+                    Some(base_origin.to_string()),
+                ));
             }
         }
     }
@@ -1041,24 +1049,21 @@ pub fn restore_enabled_keep_state<R: tauri::Runtime>(
         let trace_id = new_trace_id("cli-proxy-restore");
 
         match restore_from_manifest(app, &manifest) {
-            Ok(()) => out.push(CliProxyResult {
+            Ok(()) => out.push(CliProxyResult::success(
                 trace_id,
-                cli_key: cli_key.to_string(),
-                enabled: true,
-                ok: true,
-                error_code: None,
-                message: "已恢复备份直连配置（保留启用状态）".to_string(),
-                base_origin: manifest.base_origin.clone(),
-            }),
-            Err(err) => out.push(CliProxyResult {
+                cli_key,
+                true,
+                "已恢复备份直连配置（保留启用状态）".to_string(),
+                manifest.base_origin.clone(),
+            )),
+            Err(err) => out.push(CliProxyResult::failure(
                 trace_id,
-                cli_key: cli_key.to_string(),
-                enabled: true,
-                ok: false,
-                error_code: Some("CLI_PROXY_RESTORE_FAILED".to_string()),
-                message: err.to_string(),
-                base_origin: manifest.base_origin.clone(),
-            }),
+                cli_key,
+                true,
+                "CLI_PROXY_RESTORE_FAILED",
+                err.to_string(),
+                manifest.base_origin.clone(),
+            )),
         }
     }
     Ok(out)
