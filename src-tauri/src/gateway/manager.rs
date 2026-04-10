@@ -343,13 +343,17 @@ impl GatewayManager {
             .into_iter()
             .map(|provider_id| {
                 if let Some(item) = persisted.get(&provider_id) {
+                    let failure_count = item
+                        .failure_timestamps
+                        .len()
+                        .min(u32::MAX as usize) as u32;
                     let expired = item.state == circuit_breaker::CircuitState::Open
                         && item.open_until.map(|t| now_unix >= t).unwrap_or(true);
                     if expired {
                         return GatewayProviderCircuitStatus {
                             provider_id,
                             state: circuit_breaker::CircuitState::HalfOpen.as_str().to_string(),
-                            failure_count: item.failure_count,
+                            failure_count,
                             failure_threshold,
                             open_until: None,
                             cooldown_until: None,
@@ -358,7 +362,7 @@ impl GatewayManager {
                     GatewayProviderCircuitStatus {
                         provider_id,
                         state: item.state.as_str().to_string(),
-                        failure_count: item.failure_count,
+                        failure_count,
                         failure_threshold,
                         open_until: item.open_until,
                         cooldown_until: None,
