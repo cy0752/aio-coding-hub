@@ -9,9 +9,17 @@ use super::attempt_executor::RetryLoopState;
 use super::provider_iterator::PreparedProvider;
 use crate::gateway::proxy::request_context::RequestContext;
 
+/// Context needed for building a failed-attempt record when OAuth injection fails.
+pub(super) struct AuthErrorCtx<'a> {
+    pub(super) attempt_index: u32,
+    pub(super) retry_index: u32,
+    pub(super) attempt_started_ms: u128,
+    pub(super) circuit_before: &'a crate::circuit_breaker::CircuitSnapshot,
+}
+
 /// Inject authentication headers based on provider type and auth mode.
 ///
-/// Returns `Err(FailoverAttempt)` when OAuth header injection fails
+/// Returns `Err(Box<FailoverAttempt>)` when OAuth header injection fails
 /// (the attempt should be pushed to the attempts list and the retry
 /// loop should break).
 pub(super) fn inject_auth(
@@ -19,12 +27,9 @@ pub(super) fn inject_auth(
     input: &RequestContext,
     prepared: &PreparedProvider,
     retry_state: &RetryLoopState,
-    retry_index: u32,
-    attempt_index: u32,
-    attempt_started_ms: u128,
-    circuit_before: &crate::circuit_breaker::CircuitSnapshot,
+    error_ctx: &AuthErrorCtx<'_>,
     headers: &mut HeaderMap,
-) -> Result<(), FailoverAttempt> {
+) -> Result<(), Box<FailoverAttempt>> {
     // Always clear all auth headers (fail-closed).
     headers.remove(header::AUTHORIZATION);
     headers.remove("x-api-key");
@@ -43,10 +48,9 @@ pub(super) fn inject_auth(
     strip_incompatible_protocol_headers(input.cli_key.as_str(), upstream_cli_key, headers);
 
     if prepared.oauth_adapter.is_some() {
-        inject_oauth_auth(prepared, input, attempt_index, retry_index,
-            attempt_started_ms, circuit_before, headers)?;
+        inject_oauth_auth(prepared, input, error_ctx, headers)?;
     } else {
-        inject_standard_auth(ctx, input, prepared, retry_state, retry_index, headers);
+        inject_standard_auth(ctx, input, prepared, retry_state, error_ctx.retry_index, headers);
     }
 
     if prepared.use_codex_chatgpt_backend {
@@ -96,12 +100,9 @@ pub(super) fn clean_body(
 fn inject_oauth_auth(
     prepared: &PreparedProvider,
     input: &RequestContext,
-    attempt_index: u32,
-    retry_index: u32,
-    attempt_started_ms: u128,
-    circuit_before: &crate::circuit_breaker::CircuitSnapshot,
+    error_ctx: &AuthErrorCtx<'_>,
     headers: &mut HeaderMap,
-) -> Result<(), FailoverAttempt> {
+) -> Result<(), Box<FailoverAttempt>> {
     let cred_trimmed = prepared.effective_credential.trim();
     tracing::debug!(
         provider_id = prepared.provider_id,
@@ -117,14 +118,14 @@ fn inject_oauth_auth(
                     cli_key = %input.cli_key,
                     "OAuth inject_upstream_headers failed, skipping provider: {e}"
                 );
-                return Err(FailoverAttempt {
+                return Err(Box::new(FailoverAttempt {
                     provider_id: prepared.provider_id,
                     provider_name: prepared.provider_name_base.clone(),
                     base_url: prepared.provider_base_url_display.clone(),
                     outcome: format!("oauth_inject_failed: {e}"),
                     status: Some(500),
-                    provider_index: Some(attempt_index),
-                    retry_index: Some(retry_index),
+                    provider_index: Some(error_ctx.attempt_index),
+                    retry_index: Some(error_ctx.retry_index),
                     session_reuse: None,
                     error_category: Some("auth"),
                     error_code: Some(GatewayErrorCode::InternalError.as_str()),
@@ -132,13 +133,13 @@ fn inject_oauth_auth(
                     reason: Some(format!("OAuth header injection failed: {e}")),
                     selection_method: None,
                     reason_code: None,
-                    attempt_started_ms: Some(attempt_started_ms),
+                    attempt_started_ms: Some(error_ctx.attempt_started_ms),
                     attempt_duration_ms: Some(0),
-                    circuit_state_before: Some(circuit_before.state.as_str()),
+                    circuit_state_before: Some(error_ctx.circuit_before.state.as_str()),
                     circuit_state_after: None,
-                    circuit_failure_count: Some(circuit_before.failure_count),
-                    circuit_failure_threshold: Some(circuit_before.failure_threshold),
-                });
+                    circuit_failure_count: Some(error_ctx.circuit_before.failure_count),
+                    circuit_failure_threshold: Some(error_ctx.circuit_before.failure_threshold),
+                }));
             }
             Ok(())
         }
@@ -147,14 +148,14 @@ fn inject_oauth_auth(
                 provider_id = prepared.provider_id,
                 "oauth_adapter is None at injection point (should have been skipped earlier)"
             );
-            Err(FailoverAttempt {
+            Err(Box::new(FailoverAttempt {
                 provider_id: prepared.provider_id,
                 provider_name: prepared.provider_name_base.clone(),
                 base_url: prepared.provider_base_url_display.clone(),
                 outcome: "oauth_adapter_missing".to_string(),
                 status: Some(500),
-                provider_index: Some(attempt_index),
-                retry_index: Some(retry_index),
+                provider_index: Some(error_ctx.attempt_index),
+                retry_index: Some(error_ctx.retry_index),
                 session_reuse: None,
                 error_category: Some("auth"),
                 error_code: Some(GatewayErrorCode::InternalError.as_str()),
@@ -162,13 +163,13 @@ fn inject_oauth_auth(
                 reason: Some("OAuth adapter unexpectedly None".to_string()),
                 selection_method: None,
                 reason_code: None,
-                attempt_started_ms: Some(attempt_started_ms),
+                attempt_started_ms: Some(error_ctx.attempt_started_ms),
                 attempt_duration_ms: Some(0),
-                circuit_state_before: Some(circuit_before.state.as_str()),
+                circuit_state_before: Some(error_ctx.circuit_before.state.as_str()),
                 circuit_state_after: None,
-                circuit_failure_count: Some(circuit_before.failure_count),
-                circuit_failure_threshold: Some(circuit_before.failure_threshold),
-            })
+                circuit_failure_count: Some(error_ctx.circuit_before.failure_count),
+                circuit_failure_threshold: Some(error_ctx.circuit_before.failure_threshold),
+            }))
         }
     }
 }

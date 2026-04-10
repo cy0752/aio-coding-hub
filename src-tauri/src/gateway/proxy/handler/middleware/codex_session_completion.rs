@@ -17,7 +17,7 @@ impl CodexSessionCompletionMiddleware {
             .unwrap_or(true);
 
         if ctx.cli_key != "codex" || !enabled {
-            return MiddlewareAction::Continue(ctx);
+            return MiddlewareAction::Continue(Box::new(ctx));
         }
 
         let result = {
@@ -54,6 +54,6 @@ impl CodexSessionCompletionMiddleware {
             }),
         );
 
-        MiddlewareAction::Continue(ctx)
+        MiddlewareAction::Continue(Box::new(ctx))
     }
 }

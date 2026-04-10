@@ -34,18 +34,7 @@ impl ProviderResolutionMiddleware {
         ) {
             Ok(s) => s,
             Err(err) => {
-                let log_ctx = build_early_error_log_ctx(
-                    &ctx.state,
-                    &ctx.started,
-                    &ctx.trace_id,
-                    &ctx.cli_key,
-                    &ctx.method_hint,
-                    &ctx.forwarded_path,
-                    ctx.observe_request,
-                    ctx.query.as_deref(),
-                    ctx.created_at_ms,
-                    ctx.created_at,
-                );
+                let log_ctx = build_early_error_log_ctx(&ctx);
                 let resp = respond_invalid_cli_key_with_spawn(
                     &log_ctx,
                     ctx.session_id.clone(),
@@ -83,32 +72,23 @@ impl ProviderResolutionMiddleware {
         if ctx.providers.is_empty() {
             let contract = early_error_contract(EarlyErrorKind::NoEnabledProvider);
             let message = no_enabled_provider_message(&ctx.cli_key);
-            let log_ctx = build_early_error_log_ctx(
-                &ctx.state,
-                &ctx.started,
-                &ctx.trace_id,
-                &ctx.cli_key,
-                &ctx.method_hint,
-                &ctx.forwarded_path,
-                ctx.observe_request,
-                ctx.query.as_deref(),
-                ctx.created_at_ms,
-                ctx.created_at,
-            );
+            let session_id = ctx.session_id.take();
+            let requested_model = ctx.requested_model.take();
+            let log_ctx = build_early_error_log_ctx(&ctx);
 
             let resp = respond_early_error_with_enqueue(
                 &log_ctx,
                 contract,
                 message,
                 None,
-                ctx.session_id,
-                ctx.requested_model,
+                session_id,
+                requested_model,
             )
             .await;
             return MiddlewareAction::ShortCircuit(resp);
         }
 
-        MiddlewareAction::Continue(ctx)
+        MiddlewareAction::Continue(Box::new(ctx))
     }
 }
 

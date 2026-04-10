@@ -37,6 +37,6 @@ impl RequestFingerprintMiddleware {
         ctx.unavailable_fingerprint_key = fingerprints.unavailable_fingerprint_key;
         ctx.unavailable_fingerprint_debug = fingerprints.unavailable_fingerprint_debug;
 
-        MiddlewareAction::Continue(ctx)
+        MiddlewareAction::Continue(Box::new(ctx))
     }
 }

@@ -57,7 +57,7 @@ impl IterationCounters {
 }
 
 pub(super) enum PreparationOutcome {
-    Ready(PreparedProvider),
+    Ready(Box<PreparedProvider>),
     Skipped,
 }
 
@@ -94,9 +94,13 @@ pub(super) async fn prepare_provider(
         return PreparationOutcome::Skipped;
     }
 
+    let identity = provider_checks::ProviderIdentity {
+        provider_id,
+        provider_name_base: &provider_name_base,
+        provider_base_url_display: &provider_base_url_display,
+    };
     let gate_allow = match provider_checks::run_gates(
-        ctx, input, provider, provider_id, &provider_name_base,
-        &provider_base_url_display, counters, attempts,
+        ctx, input, provider, &identity, counters, attempts,
     ) {
         Some(allow) => allow,
         None => return PreparationOutcome::Skipped,
@@ -193,7 +197,8 @@ pub(super) async fn prepare_provider(
             use_codex_chatgpt_backend, codex_chatgpt_account_id,
         }).await;
         match outcome {
-            cx2cc_preparation::Cx2ccOutcome::Ready(result) => {
+            cx2cc_preparation::Cx2ccOutcome::Ready(boxed) => {
+                let result = *boxed;
                 cx2cc_active = result.cx2cc_active;
                 cx2cc_source = result.cx2cc_source;
                 cx2cc_codex_session_id = result.cx2cc_codex_session_id;
@@ -262,7 +267,7 @@ pub(super) async fn prepare_provider(
         );
     }
 
-    PreparationOutcome::Ready(PreparedProvider {
+    PreparationOutcome::Ready(Box::new(PreparedProvider {
         provider_id, provider_name_base, provider_base_url_base, provider_base_url_display,
         provider_index, session_reuse, effective_credential, provider_max_attempts,
         oauth_adapter, upstream_forwarded_path, upstream_query, upstream_body_bytes,
@@ -270,5 +275,5 @@ pub(super) async fn prepare_provider(
         codex_chatgpt_account_id, cx2cc_active, cx2cc_source, cx2cc_codex_session_id,
         circuit_snapshot, anthropic_stream_requested,
         stream_idle_timeout_seconds: provider.stream_idle_timeout_seconds,
-    })
+    }))
 }

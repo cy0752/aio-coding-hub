@@ -15,11 +15,11 @@ impl BillingHeaderRectifierMiddleware {
             .unwrap_or(true);
 
         if ctx.cli_key != "claude" || !enabled {
-            return MiddlewareAction::Continue(ctx);
+            return MiddlewareAction::Continue(Box::new(ctx));
         }
 
         let Some(root) = ctx.introspection_json.as_mut() else {
-            return MiddlewareAction::Continue(ctx);
+            return MiddlewareAction::Continue(Box::new(ctx));
         };
 
         let result = crate::gateway::billing_header_rectifier::rectify(root);
@@ -39,6 +39,6 @@ impl BillingHeaderRectifierMiddleware {
             );
         }
 
-        MiddlewareAction::Continue(ctx)
+        MiddlewareAction::Continue(Box::new(ctx))
     }
 }

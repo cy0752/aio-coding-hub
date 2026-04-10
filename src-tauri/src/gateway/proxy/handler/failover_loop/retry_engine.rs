@@ -9,6 +9,12 @@ use super::attempt_executor::{AttemptSendOutcome, RetryLoopState};
 use super::provider_iterator::PreparedProvider;
 use crate::gateway::proxy::request_context::RequestContext;
 
+#[derive(Clone, Copy)]
+pub(super) struct AttemptIndices {
+    pub(super) retry_index: u32,
+    pub(super) attempt_index: u32,
+}
+
 /// Run the inner retry loop for a single prepared provider.
 ///
 /// Returns `Some(Response)` if a final response was produced (success or
@@ -33,7 +39,8 @@ pub(super) async fn run_retry_loop(
 
         let ctrl = dispatch_outcome(
             ctx, input, prepared, &mut retry_state,
-            retry_index, attempt_index, send_outcome, &mut loop_state,
+            AttemptIndices { retry_index, attempt_index },
+            send_outcome, &mut loop_state,
         )
         .await;
 
@@ -54,8 +61,7 @@ async fn dispatch_outcome(
     input: &RequestContext,
     prepared: &mut PreparedProvider,
     retry_state: &mut RetryLoopState,
-    retry_index: u32,
-    attempt_index: u32,
+    indices: AttemptIndices,
     send_outcome: AttemptSendOutcome,
     loop_state: &mut LoopState<'_>,
 ) -> LoopControl {
@@ -65,20 +71,20 @@ async fn dispatch_outcome(
         AttemptSendOutcome::Response(resp) => {
             response_router::route_response(
                 ctx, input, prepared, retry_state,
-                retry_index, attempt_index, resp, loop_state,
+                indices, resp, loop_state,
             )
             .await
         }
         AttemptSendOutcome::Timeout => {
             let (attempt_ctx, provider_ctx) =
-                build_error_contexts(input, prepared, attempt_index, retry_index);
+                build_error_contexts(input, prepared, indices.attempt_index, indices.retry_index);
             send_timeout::handle_timeout(
                 ctx, provider_ctx, attempt_ctx, loop_state.reborrow(),
             ).await
         }
         AttemptSendOutcome::ReqwestError(err) => {
             let (attempt_ctx, provider_ctx) =
-                build_error_contexts(input, prepared, attempt_index, retry_index);
+                build_error_contexts(input, prepared, indices.attempt_index, indices.retry_index);
             upstream_error::handle_reqwest_error(
                 ctx, provider_ctx, attempt_ctx, loop_state.reborrow(), err,
             )

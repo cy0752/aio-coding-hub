@@ -15,12 +15,12 @@ impl CliProxyGuardMiddleware {
     pub(in crate::gateway::proxy::handler) async fn run(ctx: ProxyContext) -> MiddlewareAction {
         let bypass = ctx.forced_provider_id.is_some();
         if !crate::shared::cli_key::is_supported_cli_key(&ctx.cli_key) || bypass {
-            return MiddlewareAction::Continue(ctx);
+            return MiddlewareAction::Continue(Box::new(ctx));
         }
 
         let enabled_snapshot = cli_proxy_enabled_cached(&ctx.state.app, &ctx.cli_key);
         if enabled_snapshot.enabled {
-            return MiddlewareAction::Continue(ctx);
+            return MiddlewareAction::Continue(Box::new(ctx));
         }
 
         if !enabled_snapshot.cache_hit {
@@ -38,12 +38,6 @@ impl CliProxyGuardMiddleware {
             }
         }
 
-        let observe = compute_observe_request(
-            &ctx.cli_key,
-            &ctx.forwarded_path,
-            &ctx.headers,
-            None,
-        );
         let contract = early_error_contract(EarlyErrorKind::CliProxyDisabled);
         let message = cli_proxy_disabled_message(&ctx.cli_key, enabled_snapshot.error.as_deref());
         let special_settings_json = cli_proxy_guard_special_settings_json(
@@ -51,18 +45,15 @@ impl CliProxyGuardMiddleware {
             enabled_snapshot.cache_ttl_ms,
             enabled_snapshot.error.as_deref(),
         );
-        let log_ctx = build_early_error_log_ctx(
-            &ctx.state,
-            &ctx.started,
-            &ctx.trace_id,
+        // observe_request not yet computed; derive it for the error log.
+        let mut ctx = ctx;
+        ctx.observe_request = compute_observe_request(
             &ctx.cli_key,
-            &ctx.method_hint,
             &ctx.forwarded_path,
-            observe,
-            ctx.query.as_deref(),
-            ctx.created_at_ms,
-            ctx.created_at,
+            &ctx.headers,
+            None,
         );
+        let log_ctx = build_early_error_log_ctx(&ctx);
 
         let resp = respond_early_error_with_enqueue(
             &log_ctx,

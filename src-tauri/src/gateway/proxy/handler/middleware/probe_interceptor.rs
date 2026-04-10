@@ -11,11 +11,11 @@ pub(in crate::gateway::proxy::handler) struct ProbeInterceptorMiddleware;
 impl ProbeInterceptorMiddleware {
     pub(in crate::gateway::proxy::handler) fn run(ctx: ProxyContext) -> MiddlewareAction {
         if ctx.cli_key != "claude" {
-            return MiddlewareAction::Continue(ctx);
+            return MiddlewareAction::Continue(Box::new(ctx));
         }
 
         if !is_claude_probe_request(&ctx.forwarded_path, ctx.introspection_json.as_ref()) {
-            return MiddlewareAction::Continue(ctx);
+            return MiddlewareAction::Continue(Box::new(ctx));
         }
 
         let mut resp =

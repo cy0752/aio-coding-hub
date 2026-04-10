@@ -12,40 +12,29 @@ use crate::usage;
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::IntoResponse;
 use axum::Json;
-use crate::gateway::proxy::handler::runtime_settings::handler_runtime_settings;
-use crate::settings;
 
 pub(in crate::gateway::proxy::handler) struct WarmupInterceptorMiddleware;
 
 impl WarmupInterceptorMiddleware {
-    /// Reads settings, decides whether to intercept warmup, and populates
-    /// `ctx.runtime_settings`. Always sets runtime_settings even if not a warmup.
-    pub(in crate::gateway::proxy::handler) fn run(mut ctx: ProxyContext) -> MiddlewareAction {
-        let settings_cfg = match settings::read(&ctx.state.app) {
-            Ok(cfg) => Some(cfg),
-            Err(err) => {
-                tracing::warn!(
-                    "using default handler runtime settings because settings read failed: {err}"
-                );
-                None
-            }
-        };
-        let runtime_settings = handler_runtime_settings(
-            settings_cfg.as_ref(),
-            ctx.is_claude_count_tokens,
-        );
+    /// Intercepts Anthropic warmup requests and responds locally.
+    ///
+    /// Requires `ctx.runtime_settings` to be populated (by `RuntimeSettingsMiddleware`).
+    pub(in crate::gateway::proxy::handler) fn run(ctx: ProxyContext) -> MiddlewareAction {
+        let intercept_warmup = ctx
+            .runtime_settings
+            .as_ref()
+            .map(|rs| rs.intercept_warmup)
+            .unwrap_or(false);
 
         let is_warmup = should_intercept_warmup_request(
             &ctx.cli_key,
-            runtime_settings.intercept_warmup,
+            intercept_warmup,
             &ctx.forwarded_path,
             ctx.introspection_json.as_ref(),
         );
 
-        ctx.runtime_settings = Some(runtime_settings);
-
         if !is_warmup {
-            return MiddlewareAction::Continue(ctx);
+            return MiddlewareAction::Continue(Box::new(ctx));
         }
 
         let duration_ms = ctx.started.elapsed().as_millis();

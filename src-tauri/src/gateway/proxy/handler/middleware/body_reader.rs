@@ -7,7 +7,7 @@ use crate::gateway::proxy::handler::early_error::{
     EarlyErrorKind,
 };
 use crate::gateway::util::{body_for_introspection, MAX_REQUEST_BODY_BYTES};
-use axum::body::{to_bytes, Body};
+use axum::body::to_bytes;
 
 pub(in crate::gateway::proxy::handler) struct BodyReaderMiddleware;
 
@@ -17,8 +17,11 @@ impl BodyReaderMiddleware {
     /// Also strips the `x-aio-provider-id` header (already consumed as `forced_provider_id`).
     pub(in crate::gateway::proxy::handler) async fn run(
         mut ctx: ProxyContext,
-        body: Body,
     ) -> MiddlewareAction {
+        let body = ctx
+            .request_body
+            .take()
+            .expect("request_body must be set before BodyReaderMiddleware");
         ctx.headers.remove("x-aio-provider-id");
 
         match to_bytes(body, MAX_REQUEST_BODY_BYTES).await {
@@ -26,25 +29,14 @@ impl BodyReaderMiddleware {
                 ctx.body_bytes = bytes;
             }
             Err(err) => {
-                let observe = compute_observe_request(
+                ctx.observe_request = compute_observe_request(
                     &ctx.cli_key,
                     &ctx.forwarded_path,
                     &ctx.headers,
                     None,
                 );
                 let contract = early_error_contract(EarlyErrorKind::BodyTooLarge);
-                let log_ctx = build_early_error_log_ctx(
-                    &ctx.state,
-                    &ctx.started,
-                    &ctx.trace_id,
-                    &ctx.cli_key,
-                    &ctx.method_hint,
-                    &ctx.forwarded_path,
-                    observe,
-                    ctx.query.as_deref(),
-                    ctx.created_at_ms,
-                    ctx.created_at,
-                );
+                let log_ctx = build_early_error_log_ctx(&ctx);
 
                 let resp = respond_early_error_with_enqueue(
                     &log_ctx,
@@ -63,7 +55,7 @@ impl BodyReaderMiddleware {
         ctx.introspection_json =
             serde_json::from_slice::<serde_json::Value>(introspection_body.as_ref()).ok();
 
-        MiddlewareAction::Continue(ctx)
+        MiddlewareAction::Continue(Box::new(ctx))
     }
 }
 

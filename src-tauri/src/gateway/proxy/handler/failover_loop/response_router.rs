@@ -7,6 +7,7 @@
 use super::*;
 use super::attempt_executor::RetryLoopState;
 use super::provider_iterator::PreparedProvider;
+use super::retry_engine::AttemptIndices;
 use crate::gateway::proxy::request_context::RequestContext;
 
 /// Route an HTTP response from upstream to the appropriate handler.
@@ -18,8 +19,7 @@ pub(super) async fn route_response(
     input: &RequestContext,
     prepared: &mut PreparedProvider,
     retry_state: &mut RetryLoopState,
-    retry_index: u32,
-    attempt_index: u32,
+    indices: AttemptIndices,
     resp: reqwest::Response,
     loop_state: &mut LoopState<'_>,
 ) -> LoopControl {
@@ -48,8 +48,8 @@ pub(super) async fn route_response(
     let attempt_started = Instant::now();
     let circuit_before = prepared.circuit_snapshot.clone();
     let attempt_ctx = AttemptCtx {
-        attempt_index,
-        retry_index,
+        attempt_index: indices.attempt_index,
+        retry_index: indices.retry_index,
         attempt_started_ms,
         attempt_started,
         circuit_before: &circuit_before,
@@ -88,7 +88,7 @@ pub(super) async fn route_response(
     let _ = attempt_ctx;
 
     // --- Claude API key auth scheme fallback (401/403) ---
-    if should_try_claude_auth_fallback(input, prepared, retry_state, retry_index, status) {
+    if should_try_claude_auth_fallback(input, prepared, retry_state, indices.retry_index, status) {
         retry_state.claude_api_key_bearer_fallback = true;
         let mut settings = ctx.special_settings.lock_or_recover();
         settings.push(serde_json::json!({
@@ -99,8 +99,8 @@ pub(super) async fn route_response(
             "providerId": prepared.provider_id,
             "providerName": prepared.provider_name_base.clone(),
             "status": status.as_u16(),
-            "retryAttemptNumber": retry_index,
-            "retryAttemptNumberNext": retry_index + 1,
+            "retryAttemptNumber": indices.retry_index,
+            "retryAttemptNumberNext": indices.retry_index + 1,
         }));
         return LoopControl::ContinueRetry;
     }
@@ -117,8 +117,8 @@ pub(super) async fn route_response(
     let attempt_started = Instant::now();
     let circuit_before = prepared.circuit_snapshot.clone();
     let attempt_ctx = AttemptCtx {
-        attempt_index, retry_index, attempt_started_ms, attempt_started,
-        circuit_before: &circuit_before,
+        attempt_index: indices.attempt_index, retry_index: indices.retry_index,
+        attempt_started_ms, attempt_started, circuit_before: &circuit_before,
         gemini_oauth_response_mode: prepared.gemini_oauth_response_mode,
         cx2cc_active: prepared.cx2cc_active,
         anthropic_stream_requested: prepared.anthropic_stream_requested,

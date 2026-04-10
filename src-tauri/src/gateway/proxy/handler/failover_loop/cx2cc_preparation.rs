@@ -36,7 +36,7 @@ pub(super) struct Cx2ccPreparationInput<'a> {
 }
 
 pub(super) enum Cx2ccOutcome {
-    Ready(Cx2ccResult),
+    Ready(Box<Cx2ccResult>),
     Skipped(SkipReason),
 }
 
@@ -271,7 +271,7 @@ pub(super) async fn prepare(args: Cx2ccPreparationInput<'_>) -> Cx2ccOutcome {
         );
     }
 
-    Cx2ccOutcome::Ready(Cx2ccResult {
+    Cx2ccOutcome::Ready(Box::new(Cx2ccResult {
         cx2cc_active: true,
         cx2cc_source: Some((source.clone(), source_cli_key.clone())),
         cx2cc_codex_session_id,
@@ -283,5 +283,5 @@ pub(super) async fn prepare(args: Cx2ccPreparationInput<'_>) -> Cx2ccOutcome {
         strip_request_content_encoding,
         use_codex_chatgpt_backend,
         codex_chatgpt_account_id,
-    })
+    }))
 }

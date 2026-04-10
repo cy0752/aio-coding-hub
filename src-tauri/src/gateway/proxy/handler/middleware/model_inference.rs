@@ -24,6 +24,6 @@ impl ModelInferenceMiddleware {
             ctx.introspection_json.as_ref(),
         );
 
-        MiddlewareAction::Continue(ctx)
+        MiddlewareAction::Continue(Box::new(ctx))
     }
 }

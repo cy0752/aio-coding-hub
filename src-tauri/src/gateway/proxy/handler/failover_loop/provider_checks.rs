@@ -30,13 +30,18 @@ pub(super) fn skip_with_reason(
     );
 }
 
+/// Identity fields derived from a provider, used by gate/check functions.
+pub(super) struct ProviderIdentity<'a> {
+    pub(super) provider_id: i64,
+    pub(super) provider_name_base: &'a String,
+    pub(super) provider_base_url_display: &'a String,
+}
+
 pub(super) fn run_gates(
     ctx: CommonCtx<'_>,
     input: &RequestContext,
     provider: &crate::providers::ProviderForGateway,
-    provider_id: i64,
-    provider_name_base: &String,
-    provider_base_url_display: &String,
+    identity: &ProviderIdentity<'_>,
     counters: &mut IterationCounters,
     attempts: &mut Vec<FailoverAttempt>,
 ) -> Option<provider_gate::ProviderGateAllow> {
@@ -44,9 +49,9 @@ pub(super) fn run_gates(
     let skipped_cooldown_before = counters.skipped_cooldown;
     let gate_allow = provider_gate::gate_provider(provider_gate::ProviderGateInput {
         ctx,
-        provider_id,
-        provider_name_base,
-        provider_base_url_display,
+        provider_id: identity.provider_id,
+        provider_name_base: identity.provider_name_base,
+        provider_base_url_display: identity.provider_base_url_display,
         earliest_available_unix: &mut counters.earliest_available_unix,
         skipped_open: &mut counters.skipped_open,
         skipped_cooldown: &mut counters.skipped_cooldown,
@@ -62,9 +67,9 @@ pub(super) fn run_gates(
         push_skipped_provider_attempt(
             attempts,
             SkippedProviderAttempt {
-                provider_id,
-                provider_name: provider_name_base,
-                base_url: provider_base_url_display,
+                provider_id: identity.provider_id,
+                provider_name: identity.provider_name_base,
+                base_url: identity.provider_base_url_display,
                 error_category: "circuit_breaker",
                 error_code: GatewayErrorCode::ProviderCircuitOpen.as_str(),
                 reason: format!("provider skipped by circuit breaker ({reason_label})"),
@@ -84,9 +89,9 @@ pub(super) fn run_gates(
         push_skipped_provider_attempt(
             attempts,
             SkippedProviderAttempt {
-                provider_id,
-                provider_name: provider_name_base,
-                base_url: provider_base_url_display,
+                provider_id: identity.provider_id,
+                provider_name: identity.provider_name_base,
+                base_url: identity.provider_base_url_display,
                 error_category: "rate_limit",
                 error_code: GatewayErrorCode::ProviderRateLimited.as_str(),
                 reason: "provider skipped by rate limit".to_string(),

@@ -164,7 +164,7 @@ pub(super) async fn run(mut input: RequestContext) -> Response {
         .await;
 
         let mut prepared = match preparation {
-            provider_iterator::PreparationOutcome::Ready(p) => p,
+            provider_iterator::PreparationOutcome::Ready(p) => *p,
             provider_iterator::PreparationOutcome::Skipped => continue,
         };
 

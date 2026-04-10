@@ -32,7 +32,8 @@ use middleware::{
     BillingHeaderRectifierMiddleware, BodyReaderMiddleware, CliProxyGuardMiddleware,
     CodexSessionCompletionMiddleware, MiddlewareAction, ModelInferenceMiddleware,
     ProbeInterceptorMiddleware, ProxyContext, ProviderResolutionMiddleware,
-    RecursionGuardMiddleware, RequestFingerprintMiddleware, WarmupInterceptorMiddleware,
+    RecursionGuardMiddleware, RequestFingerprintMiddleware, RuntimeSettingsMiddleware,
+    WarmupInterceptorMiddleware,
 };
 
 type SpecialSettings = Arc<Mutex<Vec<serde_json::Value>>>;
@@ -45,52 +46,36 @@ fn new_special_settings() -> SpecialSettings {
 // In-progress request log placeholder
 // ---------------------------------------------------------------------------
 
-#[allow(clippy::too_many_arguments)]
-async fn enqueue_in_progress_request_log_if_needed(
-    state: &crate::gateway::manager::GatewayAppState,
-    trace_id: &str,
-    cli_key: &str,
-    forwarded_path: &str,
-    observe: bool,
-    method_hint: &str,
-    query: Option<&str>,
-    session_id: Option<&str>,
-    requested_model: Option<&str>,
-    created_at_ms: i64,
-    created_at: i64,
-    special_settings: &SpecialSettings,
-) {
-    if !should_seed_in_progress_request_log(cli_key, forwarded_path, observe) {
-        return;
+fn build_in_progress_request_log_args(
+    ctx: &middleware::ProxyContext,
+) -> Option<super::RequestLogEnqueueArgs> {
+    if !should_seed_in_progress_request_log(&ctx.cli_key, &ctx.forwarded_path, ctx.observe_request)
+    {
+        return None;
     }
 
-    enqueue_request_log_placeholder(
-        &state.app,
-        &state.log_tx,
-        super::RequestLogEnqueueArgs {
-            trace_id: trace_id.to_string(),
-            cli_key: cli_key.to_string(),
-            session_id: session_id.map(str::to_string),
-            method: method_hint.to_string(),
-            path: forwarded_path.to_string(),
-            query: query.map(str::to_string),
-            excluded_from_stats: false,
-            special_settings_json: response_fixer::special_settings_json(special_settings),
-            status: None,
-            error_code: None,
-            duration_ms: 0,
-            ttfb_ms: None,
-            attempts_json: "[]".to_string(),
-            requested_model: requested_model.map(str::to_string),
-            created_at_ms,
-            created_at,
-            usage_metrics: None,
-            usage: None,
-            provider_chain_json: None,
-            error_details_json: None,
-        },
-    )
-    .await;
+    Some(super::RequestLogEnqueueArgs {
+        trace_id: ctx.trace_id.to_string(),
+        cli_key: ctx.cli_key.to_string(),
+        session_id: ctx.session_id.as_deref().map(str::to_string),
+        method: ctx.method_hint.to_string(),
+        path: ctx.forwarded_path.to_string(),
+        query: ctx.query.as_deref().map(str::to_string),
+        excluded_from_stats: false,
+        special_settings_json: response_fixer::special_settings_json(&ctx.special_settings),
+        status: None,
+        error_code: None,
+        duration_ms: 0,
+        ttfb_ms: None,
+        attempts_json: "[]".to_string(),
+        requested_model: ctx.requested_model.as_deref().map(str::to_string),
+        created_at_ms: ctx.created_at_ms,
+        created_at: ctx.created_at,
+        usage_metrics: None,
+        usage: None,
+        provider_chain_json: None,
+        error_details_json: None,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -113,8 +98,8 @@ pub(in crate::gateway) async fn proxy_impl(
     let is_claude_count_tokens = is_claude_count_tokens_request(&cli_key, &forwarded_path);
 
     let (headers, body) = {
-        let (parts, body) = req.into_parts();
-        (parts.headers, body)
+        let (parts, b) = req.into_parts();
+        (parts.headers, b)
     };
 
     let forced_provider_id = extract_forced_provider_id(&headers);
@@ -132,6 +117,7 @@ pub(in crate::gateway) async fn proxy_impl(
         created_at_ms,
         created_at,
         is_claude_count_tokens,
+        request_body: Some(body),
         headers,
         body_bytes: Bytes::new(),
         introspection_json: None,
@@ -156,61 +142,67 @@ pub(in crate::gateway) async fn proxy_impl(
     // --- Middleware chain ---
     // 1. Recursion guard (blocks recursive loops).
     let ctx = match RecursionGuardMiddleware::run(ctx) {
-        MiddlewareAction::Continue(ctx) => ctx,
+        MiddlewareAction::Continue(ctx) => *ctx,
         MiddlewareAction::ShortCircuit(resp) => return resp,
     };
 
     // 2. CLI proxy guard (checks enable/disable per CLI key).
     let ctx = match CliProxyGuardMiddleware::run(ctx).await {
-        MiddlewareAction::Continue(ctx) => ctx,
+        MiddlewareAction::Continue(ctx) => *ctx,
         MiddlewareAction::ShortCircuit(resp) => return resp,
     };
 
     // 3. Body reader + size validator.
-    let ctx = match BodyReaderMiddleware::run(ctx, body).await {
-        MiddlewareAction::Continue(ctx) => ctx,
+    let ctx = match BodyReaderMiddleware::run(ctx).await {
+        MiddlewareAction::Continue(ctx) => *ctx,
         MiddlewareAction::ShortCircuit(resp) => return resp,
     };
 
     // 4. Model inference (from path/query/JSON).
     let ctx = match ModelInferenceMiddleware::run(ctx) {
-        MiddlewareAction::Continue(ctx) => ctx,
+        MiddlewareAction::Continue(ctx) => *ctx,
         MiddlewareAction::ShortCircuit(resp) => return resp,
     };
 
     // 5. Probe interceptor (Claude probe requests).
     let ctx = match ProbeInterceptorMiddleware::run(ctx) {
-        MiddlewareAction::Continue(ctx) => ctx,
+        MiddlewareAction::Continue(ctx) => *ctx,
         MiddlewareAction::ShortCircuit(resp) => return resp,
     };
 
-    // 6. Warmup interceptor (also populates runtime_settings).
+    // 6. Runtime settings reader.
+    let ctx = match RuntimeSettingsMiddleware::run(ctx) {
+        MiddlewareAction::Continue(ctx) => *ctx,
+        MiddlewareAction::ShortCircuit(resp) => return resp,
+    };
+
+    // 7. Warmup interceptor (requires runtime_settings).
     let ctx = match WarmupInterceptorMiddleware::run(ctx) {
-        MiddlewareAction::Continue(ctx) => ctx,
+        MiddlewareAction::Continue(ctx) => *ctx,
         MiddlewareAction::ShortCircuit(resp) => return resp,
     };
 
-    // 7. Codex session ID completion.
+    // 8. Codex session ID completion.
     let ctx = match CodexSessionCompletionMiddleware::run(ctx) {
-        MiddlewareAction::Continue(ctx) => ctx,
+        MiddlewareAction::Continue(ctx) => *ctx,
         MiddlewareAction::ShortCircuit(resp) => return resp,
     };
 
-    // 8. Billing header rectifier.
+    // 9. Billing header rectifier.
     let ctx = match BillingHeaderRectifierMiddleware::run(ctx) {
-        MiddlewareAction::Continue(ctx) => ctx,
+        MiddlewareAction::Continue(ctx) => *ctx,
         MiddlewareAction::ShortCircuit(resp) => return resp,
     };
 
-    // 9. Provider resolution (session routing + provider selection).
+    // 10. Provider resolution (session routing + provider selection).
     let ctx = match ProviderResolutionMiddleware::run(ctx).await {
-        MiddlewareAction::Continue(ctx) => ctx,
+        MiddlewareAction::Continue(ctx) => *ctx,
         MiddlewareAction::ShortCircuit(resp) => return resp,
     };
 
-    // 10. Request fingerprinting + recent error cache gate.
+    // 11. Request fingerprinting + recent error cache gate.
     let ctx = match RequestFingerprintMiddleware::run(ctx) {
-        MiddlewareAction::Continue(ctx) => ctx,
+        MiddlewareAction::Continue(ctx) => *ctx,
         MiddlewareAction::ShortCircuit(resp) => return resp,
     };
 
@@ -229,21 +221,9 @@ pub(in crate::gateway) async fn proxy_impl(
         );
     }
 
-    enqueue_in_progress_request_log_if_needed(
-        &ctx.state,
-        &ctx.trace_id,
-        &ctx.cli_key,
-        &ctx.forwarded_path,
-        ctx.observe_request,
-        &ctx.method_hint,
-        ctx.query.as_deref(),
-        ctx.session_id.as_deref(),
-        ctx.requested_model.as_deref(),
-        ctx.created_at_ms,
-        ctx.created_at,
-        &ctx.special_settings,
-    )
-    .await;
+    if let Some(args) = build_in_progress_request_log_args(&ctx) {
+        enqueue_request_log_placeholder(&ctx.state.app, &ctx.state.log_tx, args).await;
+    }
 
     super::forwarder::forward(RequestContext::from_handler_parts(
         ctx.into_request_context_parts(),

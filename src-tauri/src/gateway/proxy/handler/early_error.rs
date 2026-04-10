@@ -14,7 +14,6 @@ use crate::gateway::proxy::{ErrorCategory, GatewayErrorCode};
 use crate::shared::mutex_ext::MutexExt;
 use axum::http::StatusCode;
 use axum::response::Response;
-use std::time::Instant;
 
 // ---------------------------------------------------------------------------
 // Early-error contract
@@ -132,30 +131,20 @@ pub(super) struct EarlyErrorLogCtx<'a> {
     pub(super) created_at: i64,
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn build_early_error_log_ctx<'a>(
-    state: &'a GatewayAppState,
-    started: &Instant,
-    trace_id: &'a str,
-    cli_key: &'a str,
-    method_hint: &'a str,
-    forwarded_path: &'a str,
-    observe: bool,
-    query: Option<&'a str>,
-    created_at_ms: i64,
-    created_at: i64,
+    ctx: &'a super::middleware::ProxyContext,
 ) -> EarlyErrorLogCtx<'a> {
     EarlyErrorLogCtx {
-        state,
-        trace_id,
-        cli_key,
-        method_hint,
-        forwarded_path,
-        observe,
-        query,
-        duration_ms: started.elapsed().as_millis(),
-        created_at_ms,
-        created_at,
+        state: &ctx.state,
+        trace_id: &ctx.trace_id,
+        cli_key: &ctx.cli_key,
+        method_hint: &ctx.method_hint,
+        forwarded_path: &ctx.forwarded_path,
+        observe: ctx.observe_request,
+        query: ctx.query.as_deref(),
+        duration_ms: ctx.started.elapsed().as_millis(),
+        created_at_ms: ctx.created_at_ms,
+        created_at: ctx.created_at,
     }
 }
 

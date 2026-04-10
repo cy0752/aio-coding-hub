@@ -85,10 +85,13 @@ pub(super) async fn execute_attempt(
     );
 
     if let Err(failed_attempt) = attempt_auth::inject_auth(
-        ctx, input, prepared, retry_state, retry_index, attempt_index,
-        attempt_started_ms, &circuit_before, &mut headers,
+        ctx, input, prepared, retry_state,
+        &attempt_auth::AuthErrorCtx {
+            attempt_index, retry_index, attempt_started_ms, circuit_before: &circuit_before,
+        },
+        &mut headers,
     ) {
-        loop_state.attempts.push(failed_attempt);
+        loop_state.attempts.push(*failed_attempt);
         return AttemptSendOutcome::OAuthInjectFailed;
     }
 

@@ -13,6 +13,7 @@ pub(super) mod probe_interceptor;
 pub(super) mod provider_resolution;
 pub(super) mod recursion_guard;
 pub(super) mod request_fingerprint;
+pub(super) mod runtime_settings_reader;
 pub(super) mod warmup_interceptor;
 
 pub(super) use body_reader::BodyReaderMiddleware;
@@ -24,13 +25,14 @@ pub(super) use probe_interceptor::ProbeInterceptorMiddleware;
 pub(super) use provider_resolution::ProviderResolutionMiddleware;
 pub(super) use recursion_guard::RecursionGuardMiddleware;
 pub(super) use request_fingerprint::RequestFingerprintMiddleware;
+pub(super) use runtime_settings_reader::RuntimeSettingsMiddleware;
 pub(super) use warmup_interceptor::WarmupInterceptorMiddleware;
 
 use crate::gateway::manager::GatewayAppState;
 use crate::gateway::proxy::request_context::RequestContextParts;
 use crate::gateway::util::RequestedModelLocation;
 use crate::providers;
-use axum::body::Bytes;
+use axum::body::{Body, Bytes};
 use axum::http::{HeaderMap, Method};
 use axum::response::Response;
 use std::sync::{Arc, Mutex};
@@ -38,7 +40,7 @@ use std::time::Instant;
 
 /// Result of a middleware step: continue processing or return early.
 pub(super) enum MiddlewareAction {
-    Continue(ProxyContext),
+    Continue(Box<ProxyContext>),
     ShortCircuit(Response),
 }
 
@@ -62,6 +64,7 @@ pub(super) struct ProxyContext {
     pub(super) is_claude_count_tokens: bool,
 
     // -- mutable request data (enriched by middlewares) --
+    pub(super) request_body: Option<Body>,
     pub(super) headers: HeaderMap,
     pub(super) body_bytes: Bytes,
     pub(super) introspection_json: Option<serde_json::Value>,
