@@ -88,15 +88,18 @@ function requestLogCreatedAtMs(log: RequestLogSummary) {
   return log.created_at * 1000;
 }
 
-function sortRequestLogsForDisplay(a: RequestLogSummary, b: RequestLogSummary) {
-  const aInProgress = isPersistedRequestLogInProgress(a);
-  const bInProgress = isPersistedRequestLogInProgress(b);
-  if (aInProgress !== bInProgress) return aInProgress ? -1 : 1;
+function makeSortRequestLogsForDisplay(liveTraceIds: ReadonlySet<string>) {
+  return (a: RequestLogSummary, b: RequestLogSummary) => {
+    // Only treat a log as in-progress when the trace store still tracks it.
+    const aInProgress = isPersistedRequestLogInProgress(a) && liveTraceIds.has(a.trace_id);
+    const bInProgress = isPersistedRequestLogInProgress(b) && liveTraceIds.has(b.trace_id);
+    if (aInProgress !== bInProgress) return aInProgress ? -1 : 1;
 
-  const aTsMs = requestLogCreatedAtMs(a);
-  const bTsMs = requestLogCreatedAtMs(b);
-  if (aTsMs !== bTsMs) return bTsMs - aTsMs;
-  return b.id - a.id;
+    const aTsMs = requestLogCreatedAtMs(a);
+    const bTsMs = requestLogCreatedAtMs(b);
+    if (aTsMs !== bTsMs) return bTsMs - aTsMs;
+    return b.id - a.id;
+  };
 }
 
 function mergeTraceWithRequestLog(
@@ -106,6 +109,9 @@ function mergeTraceWithRequestLog(
   if (!requestLog) return trace;
 
   const summary = trace.summary;
+  // Intentionally checks only DB status here — the trace already exists, so
+  // we just need to know whether the request log is still pending to decide
+  // which fields to backfill from the persisted record.
   const requestLogInProgress = isPersistedRequestLogInProgress(requestLog);
   if (!summary && requestLogInProgress) {
     return {
@@ -596,10 +602,18 @@ export function HomeRequestLogsPanel({
   );
   const displayedTraces = traces.length > 0 ? traces : previewTraces;
   const displayedRequestLogs = requestLogs.length > 0 ? requestLogs : previewRequestLogs;
+  const displayedTraceIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const t of displayedTraces) {
+      const id = t.trace_id?.trim();
+      if (id) ids.add(id);
+    }
+    return ids;
+  }, [displayedTraces]);
   const sortedRequestLogs = useMemo(() => {
     if (displayedRequestLogs.length <= 1) return displayedRequestLogs;
-    return displayedRequestLogs.slice().sort(sortRequestLogsForDisplay);
-  }, [displayedRequestLogs]);
+    return displayedRequestLogs.slice().sort(makeSortRequestLogsForDisplay(displayedTraceIds));
+  }, [displayedRequestLogs, displayedTraceIds]);
   const summaryText =
     summaryTextOverride ??
     (requestLogsAvailable === false
@@ -813,6 +827,8 @@ const RequestLogsList = memo(function RequestLogsList({
       if (!isPersistedRequestLogInProgress(log)) return true;
       const traceId = log.trace_id?.trim();
       if (!traceId) return true;
+      // Orphaned logs (status=null, no live trace) fall through here because
+      // realtimeTraceIds won't contain their trace_id — they stay in the list.
       return !realtimeTraceIds.has(traceId);
     });
   }, [realtimeTraceCandidates, requestLogs]);

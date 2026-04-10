@@ -530,9 +530,15 @@ describe("components/home/HomeRequestLogsPanel", () => {
     expect(screen.queryByText("当前阶段")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /pending-model/ })).toBeInTheDocument();
     const completedNewerButton = screen.getByRole("button", { name: /done-newer-model/ });
+    const pendingButton = screen.getByRole("button", { name: /pending-model/ });
     const completedOlderButton = screen.getByRole("button", { name: /done-older-model/ });
 
-    expect(completedNewerButton.compareDocumentPosition(completedOlderButton)).toBe(
+    // Without a live trace, the orphaned log is no longer prioritised to the
+    // top — all three entries are sorted strictly by timestamp (newest first).
+    expect(completedNewerButton.compareDocumentPosition(pendingButton)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    expect(pendingButton.compareDocumentPosition(completedOlderButton)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING
     );
   });
