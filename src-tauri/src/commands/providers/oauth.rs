@@ -318,9 +318,7 @@ pub(crate) async fn provider_oauth_status(
     }
 }
 
-pub(super) fn oauth_details_can_refresh(
-    details: &crate::providers::ProviderOAuthDetails,
-) -> bool {
+pub(super) fn oauth_details_can_refresh(details: &crate::providers::ProviderOAuthDetails) -> bool {
     details
         .oauth_refresh_token
         .as_deref()
