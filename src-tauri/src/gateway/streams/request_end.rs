@@ -26,13 +26,11 @@ pub(super) fn emit_request_event_and_spawn_request_log(
         let mut attempts = ctx.attempts.clone();
         if let Some(last) = attempts.last_mut() {
             if last.outcome == "success" {
-                last.outcome = format!(
-                    "stream_error: code={}",
-                    error_code.unwrap_or("unknown")
-                );
+                last.outcome = format!("stream_error: code={}", error_code.unwrap_or("unknown"));
                 last.error_code = error_code;
-                last.error_category =
-                    effective_error_category.or(Some(crate::gateway::proxy::ErrorCategory::SystemError.as_str()));
+                last.error_category = effective_error_category.or(Some(
+                    crate::gateway::proxy::ErrorCategory::SystemError.as_str(),
+                ));
                 // Update duration to the full stream duration instead of the initial value.
                 last.attempt_duration_ms = Some(duration_ms);
             }

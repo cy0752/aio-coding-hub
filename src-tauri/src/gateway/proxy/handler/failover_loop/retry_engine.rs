@@ -94,14 +94,24 @@ async fn dispatch_outcome(
             .await
         }
         AttemptSendOutcome::Timeout(timing) => {
-            let (attempt_ctx, provider_ctx) =
-                build_error_contexts(input, prepared, &timing, indices.attempt_index, indices.retry_index);
+            let (attempt_ctx, provider_ctx) = build_error_contexts(
+                input,
+                prepared,
+                &timing,
+                indices.attempt_index,
+                indices.retry_index,
+            );
             send_timeout::handle_timeout(ctx, provider_ctx, attempt_ctx, loop_state.reborrow())
                 .await
         }
         AttemptSendOutcome::ReqwestError(err, timing) => {
-            let (attempt_ctx, provider_ctx) =
-                build_error_contexts(input, prepared, &timing, indices.attempt_index, indices.retry_index);
+            let (attempt_ctx, provider_ctx) = build_error_contexts(
+                input,
+                prepared,
+                &timing,
+                indices.attempt_index,
+                indices.retry_index,
+            );
             upstream_error::handle_reqwest_error(
                 ctx,
                 provider_ctx,
