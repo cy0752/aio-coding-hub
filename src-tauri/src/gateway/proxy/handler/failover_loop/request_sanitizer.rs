@@ -6,8 +6,8 @@
 //! before the request is forwarded.
 
 use super::provider_iterator::PreparedProvider;
-use axum::body::Bytes;
 use crate::gateway::proxy::request_context::RequestContext;
+use axum::body::Bytes;
 
 /// Clean request body (e.g. remove empty text blocks for Claude OAuth).
 pub(super) fn clean_body(input: &RequestContext, prepared: &PreparedProvider) -> Bytes {

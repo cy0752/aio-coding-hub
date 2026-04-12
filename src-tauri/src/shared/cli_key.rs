@@ -138,7 +138,10 @@ mod tests {
     #[test]
     fn parse_rejects_unknown_key() {
         let err = CliKey::parse("opencode").unwrap_err();
-        assert_eq!(err.to_string(), "SEC_INVALID_INPUT: unknown cli_key=opencode");
+        assert_eq!(
+            err.to_string(),
+            "SEC_INVALID_INPUT: unknown cli_key=opencode"
+        );
     }
 
     #[test]
@@ -176,9 +179,15 @@ mod tests {
 
     #[test]
     fn serde_serialize_to_snake_case() {
-        assert_eq!(serde_json::to_string(&CliKey::Claude).unwrap(), "\"claude\"");
+        assert_eq!(
+            serde_json::to_string(&CliKey::Claude).unwrap(),
+            "\"claude\""
+        );
         assert_eq!(serde_json::to_string(&CliKey::Codex).unwrap(), "\"codex\"");
-        assert_eq!(serde_json::to_string(&CliKey::Gemini).unwrap(), "\"gemini\"");
+        assert_eq!(
+            serde_json::to_string(&CliKey::Gemini).unwrap(),
+            "\"gemini\""
+        );
     }
 
     #[test]
