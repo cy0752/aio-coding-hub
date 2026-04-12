@@ -1,7 +1,8 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { getErrorCodeLabel } from "./home/HomeLogShared";
 import { Spinner } from "../ui/Spinner";
 import { cn } from "../utils/cn";
+import { Globe, AlertTriangle, Zap, ChevronDown } from "lucide-react";
 
 function mapSelectionMethod(selectionMethod: string | null) {
   switch (selectionMethod) {
@@ -337,148 +338,232 @@ export function ProviderChainView({
       <div className="relative pl-8">
         <div className="absolute left-[15px] top-2 bottom-2 w-px bg-slate-200 dark:bg-slate-700" />
         <div className="space-y-4">
-          {attempts.map((attempt) => {
-            const success = attempt.outcome === "success";
-            const skipped = attempt.outcome === "skipped";
-            const isFinal = Boolean(
-              finalAttempt && attempt.attempt_index === finalAttempt.attempt_index
-            );
-            const providerLabel =
-              attempt.provider_name && attempt.provider_name !== "未知"
-                ? attempt.provider_name
-                : `未知（id=${attempt.provider_id}）`;
-            const reasonText = buildAttemptReason(attempt, attempts.length > 1);
-            const selectionText = mapSelectionMethod(attempt.selection_method?.trim() ?? null);
-            const reasonCodeText = mapReasonCode(attempt.reason_code?.trim() ?? null);
-            const decisionText = mapDecision(attempt.decision?.trim() ?? null);
+          {attempts.map((attempt) => (
+            <AttemptCard
+              key={`${attempt.attempt_index}-${attempt.provider_id}-${attempt.base_url}`}
+              attempt={attempt}
+              isFinal={Boolean(
+                finalAttempt && attempt.attempt_index === finalAttempt.attempt_index
+              )}
+              hasMultipleAttempts={attempts.length > 1}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
-            return (
-              <div
-                key={`${attempt.attempt_index}-${attempt.provider_id}-${attempt.base_url}`}
-                className="relative"
+function AttemptCard({
+  attempt,
+  isFinal,
+  hasMultipleAttempts,
+}: {
+  attempt: ProviderChainAttempt;
+  isFinal: boolean;
+  hasMultipleAttempts: boolean;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const success = attempt.outcome === "success";
+  const skipped = attempt.outcome === "skipped";
+  const providerLabel =
+    attempt.provider_name && attempt.provider_name !== "未知"
+      ? attempt.provider_name
+      : `未知（id=${attempt.provider_id}）`;
+  const reasonText = buildAttemptReason(attempt, hasMultipleAttempts);
+  const selectionText = mapSelectionMethod(attempt.selection_method?.trim() ?? null);
+  const reasonCodeText = mapReasonCode(attempt.reason_code?.trim() ?? null);
+  const decisionText = mapDecision(attempt.decision?.trim() ?? null);
+
+  const hasCircuitBreaker =
+    attempt.circuit_state_after != null || attempt.circuit_state_before != null;
+  const hasError = !success && !skipped && attempt.reason != null;
+
+  return (
+    <div className="relative">
+      <div
+        className={cn(
+          "absolute -left-8 top-4 flex h-8 w-8 items-center justify-center rounded-full border-2 bg-white text-sm font-semibold shadow-sm dark:bg-slate-900",
+          success
+            ? "border-emerald-300 text-emerald-600 dark:border-emerald-700 dark:text-emerald-400"
+            : skipped
+              ? "border-slate-300 text-slate-500 dark:border-slate-600 dark:text-slate-300"
+              : "border-rose-300 text-rose-600 dark:border-rose-700 dark:text-rose-400"
+        )}
+      >
+        {attempt.attempt_index}
+      </div>
+
+      <div
+        className={cn(
+          "rounded-2xl border bg-white shadow-sm dark:bg-slate-800/90 overflow-hidden",
+          isFinal
+            ? success
+              ? "border-emerald-200 bg-emerald-50/50 dark:border-emerald-700 dark:bg-emerald-900/20"
+              : skipped
+                ? "border-slate-200 bg-slate-50/50 dark:border-slate-600 dark:bg-slate-700/20"
+                : "border-rose-200 bg-rose-50/50 dark:border-rose-700 dark:bg-rose-900/20"
+            : "border-slate-200 dark:border-slate-700"
+        )}
+      >
+        {/* Header - clickable to expand/collapse */}
+        <button
+          type="button"
+          className="w-full text-left px-4 py-3 flex items-center justify-between gap-2 hover:bg-slate-50/50 dark:hover:bg-slate-700/30 transition-colors"
+          onClick={() => setExpanded((prev) => !prev)}
+        >
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
+            <span className="text-base font-semibold text-slate-900 dark:text-slate-100">
+              {success
+                ? `请求成功`
+                : skipped
+                  ? `跳过`
+                  : hasMultipleAttempts
+                    ? `重试 #${attempt.attempt_index}`
+                    : `请求失败`}
+            </span>
+            {attempt.attempt_duration_ms != null ? (
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                +{attempt.attempt_duration_ms}ms
+              </span>
+            ) : null}
+            {attempt.status != null ? (
+              <span
+                className={cn(
+                  "text-xs font-medium",
+                  attempt.status >= 400
+                    ? "text-rose-600 dark:text-rose-400"
+                    : "text-slate-500 dark:text-slate-400"
+                )}
               >
-                <div
-                  className={cn(
-                    "absolute -left-8 top-4 flex h-8 w-8 items-center justify-center rounded-full border-2 bg-white text-sm font-semibold shadow-sm dark:bg-slate-900",
-                    success
-                      ? "border-emerald-300 text-emerald-600 dark:border-emerald-700 dark:text-emerald-400"
-                      : skipped
-                        ? "border-slate-300 text-slate-500 dark:border-slate-600 dark:text-slate-300"
-                        : "border-rose-300 text-rose-600 dark:border-rose-700 dark:text-rose-400"
-                  )}
-                >
-                  {attempt.attempt_index}
-                </div>
+                HTTP {attempt.status}
+              </span>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span
+              className={cn(
+                "rounded-full px-2.5 py-1 text-xs font-medium",
+                success
+                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                  : skipped
+                    ? "bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200"
+                    : "bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400"
+              )}
+            >
+              {success ? "成功" : skipped ? "已跳过" : "未成功"}
+            </span>
+            <ChevronDown
+              className={cn(
+                "h-4 w-4 text-slate-400 transition-transform",
+                expanded && "rotate-180"
+              )}
+            />
+          </div>
+        </button>
 
-                <div
-                  className={cn(
-                    "rounded-2xl border bg-white px-4 py-4 shadow-sm dark:bg-slate-800/90",
-                    isFinal
-                      ? success
-                        ? "border-emerald-200 bg-emerald-50/50 dark:border-emerald-700 dark:bg-emerald-900/20"
-                        : skipped
-                          ? "border-slate-200 bg-slate-50/50 dark:border-slate-600 dark:bg-slate-700/20"
-                          : "border-rose-200 bg-rose-50/50 dark:border-rose-700 dark:bg-rose-900/20"
-                      : "border-slate-200 dark:border-slate-700"
-                  )}
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-base font-semibold text-slate-900 dark:text-slate-100">
-                          {success
-                            ? `请求成功：${providerLabel}`
-                            : skipped
-                              ? `跳过：${providerLabel}`
-                              : attempts.length > 1
-                                ? `重试/切换：${providerLabel}`
-                                : `请求失败：${providerLabel}`}
-                        </span>
-                        {attempt.attempt_duration_ms != null ? (
-                          <span className="text-xs text-slate-500 dark:text-slate-400">
-                            +{attempt.attempt_duration_ms}ms
-                          </span>
-                        ) : null}
-                      </div>
+        {/* Expandable detail body */}
+        {expanded && (
+          <div className="px-4 pb-4 space-y-3 border-t border-slate-100 dark:border-slate-700/50 pt-3">
+            {/* Provider info */}
+            <div className="text-sm text-slate-600 dark:text-slate-300">{providerLabel}</div>
 
-                      <div className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
-                        {reasonText}
-                      </div>
+            <div className="text-sm text-slate-500 dark:text-slate-400">
+              Provider ID: <span className="font-semibold text-slate-800 dark:text-slate-200">{attempt.provider_id}</span>
+            </div>
 
-                      {attempt.reason ? (
-                        <div className="mt-2 rounded-lg border border-rose-200/60 bg-rose-50/50 px-3 py-2 dark:border-rose-500/20 dark:bg-rose-950/20">
-                          <pre className="whitespace-pre-wrap break-all text-xs font-mono text-rose-800 dark:text-rose-200 leading-relaxed">
-                            {attempt.reason}
-                          </pre>
-                        </div>
-                      ) : null}
-
-                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                        {attempt.status != null ? (
-                          <span className="rounded-full bg-slate-100 dark:bg-slate-700 px-2.5 py-1">
-                            HTTP {attempt.status}
-                          </span>
-                        ) : null}
-                        {selectionText ? (
-                          <span className="rounded-full bg-slate-100 dark:bg-slate-700 px-2.5 py-1">
-                            {selectionText}
-                          </span>
-                        ) : null}
-                        {reasonCodeText ? (
-                          <span className="rounded-full bg-slate-100 dark:bg-slate-700 px-2.5 py-1">
-                            {reasonCodeText}
-                          </span>
-                        ) : null}
-                        {decisionText ? (
-                          <span className="rounded-full bg-slate-100 dark:bg-slate-700 px-2.5 py-1">
-                            {decisionText}
-                          </span>
-                        ) : null}
-                        {attempt.error_code ? (
-                          <span className="rounded-full bg-amber-50 dark:bg-amber-900/30 px-2.5 py-1 font-medium text-amber-700 dark:text-amber-400">
-                            {getErrorCodeLabel(attempt.error_code)}
-                          </span>
-                        ) : null}
-                        {attempt.circuit_state_after ? (
-                          <span
-                            className={cn(
-                              "rounded-full px-2.5 py-1 font-medium",
-                              attempt.circuit_state_after === "open"
-                                ? "bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400"
-                                : attempt.circuit_state_after === "half_open"
-                                  ? "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                                  : "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                            )}
-                          >
-                            {attempt.circuit_failure_count != null &&
-                            attempt.circuit_failure_threshold != null
-                              ? `${attempt.circuit_state_after} ${attempt.circuit_failure_count}/${attempt.circuit_failure_threshold}`
-                              : attempt.circuit_state_after}
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className={cn(
-                          "rounded-full px-2.5 py-1 text-xs font-medium",
-                          success
-                            ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                            : skipped
-                              ? "bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200"
-                              : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                        )}
-                      >
-                        {success ? "成功" : skipped ? "已跳过" : "未成功"}
-                      </span>
-                    </div>
+            {/* Endpoint */}
+            {attempt.base_url ? (
+              <div className="flex items-start gap-2 text-sm">
+                <Globe className="h-4 w-4 text-slate-400 dark:text-slate-500 shrink-0 mt-0.5" />
+                <div>
+                  <span className="text-slate-500 dark:text-slate-400">端点</span>
+                  <div className="font-mono text-slate-800 dark:text-slate-200 break-all">
+                    {attempt.base_url}
                   </div>
                 </div>
               </div>
-            );
-          })}
-        </div>
+            ) : null}
+
+            {/* Circuit breaker */}
+            {hasCircuitBreaker ? (
+              <div className="flex items-center gap-2 text-sm">
+                <Zap className="h-4 w-4 text-slate-400 dark:text-slate-500 shrink-0" />
+                <span className="text-slate-500 dark:text-slate-400">熔断器:</span>
+                <span
+                  className={cn(
+                    "rounded-md px-2 py-0.5 text-xs font-bold text-white",
+                    (attempt.circuit_state_after ?? attempt.circuit_state_before) === "open"
+                      ? "bg-rose-500"
+                      : (attempt.circuit_state_after ?? attempt.circuit_state_before) === "half_open"
+                        ? "bg-amber-500"
+                        : "bg-emerald-500"
+                  )}
+                >
+                  {attempt.circuit_state_after ?? attempt.circuit_state_before}
+                </span>
+                {attempt.circuit_failure_count != null && attempt.circuit_failure_threshold != null ? (
+                  <span className="text-sm text-slate-600 dark:text-slate-300">
+                    {attempt.circuit_failure_count}/{attempt.circuit_failure_threshold} 次失败
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+
+            {/* Error section */}
+            {hasError ? (
+              <div className="mt-2 rounded-lg border border-rose-200/60 bg-rose-50/50 px-3 py-3 dark:border-rose-500/20 dark:bg-rose-950/20">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <AlertTriangle className="h-4 w-4 text-rose-500 dark:text-rose-400 shrink-0" />
+                  <span className="text-sm font-semibold text-rose-600 dark:text-rose-400">
+                    错误
+                  </span>
+                </div>
+                <pre className="whitespace-pre-wrap break-all text-xs font-mono text-rose-800 dark:text-rose-200 leading-relaxed">
+                  {attempt.reason}
+                </pre>
+              </div>
+            ) : !success && !skipped && !attempt.reason ? (
+              <div className="text-sm text-slate-500 dark:text-slate-400">{reasonText}</div>
+            ) : success || skipped ? (
+              <div className="text-sm text-slate-500 dark:text-slate-400">{reasonText}</div>
+            ) : null}
+
+            {/* Collapsible raw details / error_details label */}
+            {!success && !skipped && attempt.reason ? (
+              <details className="group">
+                <summary className="cursor-pointer text-xs text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 select-none">
+                  错误详情
+                </summary>
+                <div className="mt-1 text-sm text-slate-600 dark:text-slate-300">{reasonText}</div>
+              </details>
+            ) : null}
+
+            {/* Tag pills */}
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+              {selectionText ? (
+                <span className="rounded-full bg-slate-100 dark:bg-slate-700 px-2.5 py-1">
+                  {selectionText}
+                </span>
+              ) : null}
+              {reasonCodeText ? (
+                <span className="rounded-full bg-slate-100 dark:bg-slate-700 px-2.5 py-1">
+                  {reasonCodeText}
+                </span>
+              ) : null}
+              {decisionText ? (
+                <span className="rounded-full bg-slate-100 dark:bg-slate-700 px-2.5 py-1">
+                  {decisionText}
+                </span>
+              ) : null}
+              {attempt.error_code ? (
+                <span className="rounded-full bg-amber-50 dark:bg-amber-900/30 px-2.5 py-1 font-medium text-amber-700 dark:text-amber-400">
+                  {getErrorCodeLabel(attempt.error_code)}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
