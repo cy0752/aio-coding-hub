@@ -4,7 +4,7 @@
 //! fallback (401/403), OAuth 401 reactive refresh, and non-success upstream
 //! error delegation.
 
-use super::attempt_executor::RetryLoopState;
+use super::attempt_executor::{AttemptTiming, RetryLoopState};
 use super::provider_iterator::PreparedProvider;
 use super::retry_engine::AttemptIndices;
 use super::*;
@@ -14,6 +14,7 @@ use crate::gateway::proxy::request_context::RequestContext;
 ///
 /// Returns a `LoopControl` indicating whether to continue retrying,
 /// break out of the retry loop, or return a final response.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn route_response(
     ctx: CommonCtx<'_>,
     input: &RequestContext,
@@ -21,6 +22,7 @@ pub(super) async fn route_response(
     retry_state: &mut RetryLoopState,
     indices: AttemptIndices,
     resp: reqwest::Response,
+    timing: AttemptTiming,
     loop_state: &mut LoopState<'_>,
 ) -> LoopControl {
     let status = resp.status();
@@ -50,14 +52,12 @@ pub(super) async fn route_response(
         );
     }
 
-    let attempt_started_ms = input.started.elapsed().as_millis();
-    let attempt_started = Instant::now();
     let circuit_before = prepared.circuit_snapshot.clone();
     let attempt_ctx = AttemptCtx {
         attempt_index: indices.attempt_index,
         retry_index: indices.retry_index,
-        attempt_started_ms,
-        attempt_started,
+        attempt_started_ms: timing.attempt_started_ms,
+        attempt_started: timing.attempt_started,
         circuit_before: &circuit_before,
         gemini_oauth_response_mode: prepared.gemini_oauth_response_mode,
         cx2cc_active: prepared.cx2cc_active,
@@ -129,14 +129,12 @@ pub(super) async fn route_response(
     }
 
     // Rebuild contexts after mutable operations are done.
-    let attempt_started_ms = input.started.elapsed().as_millis();
-    let attempt_started = Instant::now();
     let circuit_before = prepared.circuit_snapshot.clone();
     let attempt_ctx = AttemptCtx {
         attempt_index: indices.attempt_index,
         retry_index: indices.retry_index,
-        attempt_started_ms,
-        attempt_started,
+        attempt_started_ms: timing.attempt_started_ms,
+        attempt_started: timing.attempt_started,
         circuit_before: &circuit_before,
         gemini_oauth_response_mode: prepared.gemini_oauth_response_mode,
         cx2cc_active: prepared.cx2cc_active,

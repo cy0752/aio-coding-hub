@@ -27,11 +27,17 @@ impl RetryLoopState {
     }
 }
 
+/// Timing captured at the start of an attempt, before the upstream send.
+pub(super) struct AttemptTiming {
+    pub(super) attempt_started_ms: u128,
+    pub(super) attempt_started: Instant,
+}
+
 /// Result of building + sending one attempt.
 pub(super) enum AttemptSendOutcome {
-    Response(reqwest::Response),
-    Timeout,
-    ReqwestError(reqwest::Error),
+    Response(reqwest::Response, AttemptTiming),
+    Timeout(AttemptTiming),
+    ReqwestError(reqwest::Error, AttemptTiming),
     /// URL build failure already recorded; caller should apply the returned LoopControl.
     UrlBuildFailed(LoopControl),
     /// OAuth adapter injection failed; break out of retry loop for this provider.
@@ -114,13 +120,18 @@ pub(super) async fn execute_attempt(
     // --- Clean body + send upstream ---
     let cleaned_body = request_sanitizer::clean_body(input, prepared);
 
+    let timing = AttemptTiming {
+        attempt_started_ms,
+        attempt_started: Instant::now(),
+    };
+
     let send_result =
         send::send_upstream(ctx, input.req_method.clone(), url, headers, cleaned_body).await;
 
     match send_result {
-        send::SendResult::Ok(resp) => AttemptSendOutcome::Response(resp),
-        send::SendResult::Timeout => AttemptSendOutcome::Timeout,
-        send::SendResult::Err(err) => AttemptSendOutcome::ReqwestError(err),
+        send::SendResult::Ok(resp) => AttemptSendOutcome::Response(resp, timing),
+        send::SendResult::Timeout => AttemptSendOutcome::Timeout(timing),
+        send::SendResult::Err(err) => AttemptSendOutcome::ReqwestError(err, timing),
     }
 }
 

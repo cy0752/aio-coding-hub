@@ -4,7 +4,7 @@
 //! continue retrying the same provider, switch to the next provider, or
 //! return a final response to the client.
 
-use super::attempt_executor::{AttemptSendOutcome, RetryLoopState};
+use super::attempt_executor::{AttemptSendOutcome, AttemptTiming, RetryLoopState};
 use super::provider_iterator::PreparedProvider;
 use super::*;
 use crate::gateway::proxy::request_context::RequestContext;
@@ -80,7 +80,7 @@ async fn dispatch_outcome(
     match send_outcome {
         AttemptSendOutcome::UrlBuildFailed(ctrl) => ctrl,
         AttemptSendOutcome::OAuthInjectFailed => LoopControl::BreakRetry,
-        AttemptSendOutcome::Response(resp) => {
+        AttemptSendOutcome::Response(resp, timing) => {
             response_router::route_response(
                 ctx,
                 input,
@@ -88,19 +88,20 @@ async fn dispatch_outcome(
                 retry_state,
                 indices,
                 resp,
+                timing,
                 loop_state,
             )
             .await
         }
-        AttemptSendOutcome::Timeout => {
+        AttemptSendOutcome::Timeout(timing) => {
             let (attempt_ctx, provider_ctx) =
-                build_error_contexts(input, prepared, indices.attempt_index, indices.retry_index);
+                build_error_contexts(input, prepared, &timing, indices.attempt_index, indices.retry_index);
             send_timeout::handle_timeout(ctx, provider_ctx, attempt_ctx, loop_state.reborrow())
                 .await
         }
-        AttemptSendOutcome::ReqwestError(err) => {
+        AttemptSendOutcome::ReqwestError(err, timing) => {
             let (attempt_ctx, provider_ctx) =
-                build_error_contexts(input, prepared, indices.attempt_index, indices.retry_index);
+                build_error_contexts(input, prepared, &timing, indices.attempt_index, indices.retry_index);
             upstream_error::handle_reqwest_error(
                 ctx,
                 provider_ctx,
@@ -115,18 +116,17 @@ async fn dispatch_outcome(
 
 /// Build `AttemptCtx` and `ProviderCtx` for error-path handling (timeout / reqwest error).
 fn build_error_contexts<'a>(
-    input: &RequestContext,
+    _input: &RequestContext,
     prepared: &'a PreparedProvider,
+    timing: &AttemptTiming,
     attempt_index: u32,
     retry_index: u32,
 ) -> (AttemptCtx<'a>, ProviderCtx<'a>) {
-    let attempt_started_ms = input.started.elapsed().as_millis();
-    let attempt_started = Instant::now();
     let attempt_ctx = AttemptCtx {
         attempt_index,
         retry_index,
-        attempt_started_ms,
-        attempt_started,
+        attempt_started_ms: timing.attempt_started_ms,
+        attempt_started: timing.attempt_started,
         circuit_before: &prepared.circuit_snapshot,
         gemini_oauth_response_mode: prepared.gemini_oauth_response_mode,
         cx2cc_active: prepared.cx2cc_active,
