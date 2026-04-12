@@ -1,4 +1,4 @@
-import { MDXEditor, headingsPlugin, listsPlugin, quotePlugin, thematicBreakPlugin } from "@mdxeditor/editor";
+import { MDXEditor, headingsPlugin, linkPlugin, listsPlugin, quotePlugin, thematicBreakPlugin } from "@mdxeditor/editor";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
 import { AIO_RELEASES_URL } from "../constants/urls";
@@ -15,6 +15,7 @@ import { formatBytes, formatIsoDateTime } from "../utils/formatters";
 
 const READONLY_PLUGINS = [
   headingsPlugin(),
+  linkPlugin(),
   listsPlugin(),
   quotePlugin(),
   thematicBreakPlugin(),

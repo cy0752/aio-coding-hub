@@ -55,6 +55,30 @@ describe("components/UpdateDialog", () => {
     expect(screen.getByRole("button", { name: "下载并安装" })).toBeDisabled();
   });
 
+  it("renders changelog body with markdown links via MDXEditor", () => {
+    vi.mocked(useUpdateMeta).mockReturnValue({
+      about: { run_mode: "desktop", app_version: "0.0.0" },
+      updateCandidate: {
+        rid: 1,
+        version: "1.2.0",
+        currentVersion: "1.1.0",
+        date: "2026-04-12T11:00:00Z",
+        body: "## [1.2.0](https://example.com) (2026-04-12)\n\n### Features:\n* [新增功能](https://example.com/commit/abc)",
+      },
+      checkingUpdate: false,
+      dialogOpen: true,
+      installingUpdate: false,
+      installError: null,
+      installTotalBytes: null,
+      installDownloadedBytes: 0,
+    } as any);
+
+    render(<UpdateDialog />);
+
+    expect(screen.getByText("更新日志")).toBeInTheDocument();
+    expect(screen.getByText("新增功能")).toBeInTheDocument();
+  });
+
   it("renders publish date, installing progress, and install error state", () => {
     vi.mocked(useUpdateMeta).mockReturnValue({
       about: { run_mode: "desktop", app_version: "0.0.0" },
