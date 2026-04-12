@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { Spinner } from "../ui/Spinner";
 import { cn } from "../utils/cn";
-import { Globe, AlertTriangle, Zap, ChevronDown } from "lucide-react";
+import { Globe, AlertTriangle, Zap, ChevronDown, ArrowRight } from "lucide-react";
+import { getGatewayErrorShortLabel } from "../constants/gatewayErrorCodes";
+import { DisclosureSection } from "./home/DisclosureSection";
 
 export type ProviderChainAttemptLog = {
   attempt_index: number;
@@ -353,6 +355,9 @@ function AttemptCard({
               Provider ID: <span className="font-semibold text-slate-800 dark:text-slate-200">{attempt.provider_id}</span>
             </div>
 
+            {/* Decision tags */}
+            <DecisionTags attempt={attempt} />
+
             {attempt.base_url ? (
               <div className="flex items-start gap-2 text-sm">
                 <Globe className="h-4 w-4 text-slate-400 dark:text-slate-500 shrink-0 mt-0.5" />
@@ -369,23 +374,7 @@ function AttemptCard({
               <div className="flex items-center gap-2 text-sm">
                 <Zap className="h-4 w-4 text-slate-400 dark:text-slate-500 shrink-0" />
                 <span className="text-slate-500 dark:text-slate-400">熔断器:</span>
-                <span
-                  className={cn(
-                    "rounded-md px-2 py-0.5 text-xs font-bold text-white",
-                    (attempt.circuit_state_after ?? attempt.circuit_state_before) === "open"
-                      ? "bg-rose-500"
-                      : (attempt.circuit_state_after ?? attempt.circuit_state_before) === "half_open"
-                        ? "bg-amber-500"
-                        : "bg-emerald-500"
-                  )}
-                >
-                  {attempt.circuit_state_after ?? attempt.circuit_state_before}
-                </span>
-                {attempt.circuit_failure_count != null && attempt.circuit_failure_threshold != null ? (
-                  <span className="text-sm text-slate-600 dark:text-slate-300">
-                    {attempt.circuit_failure_count}/{attempt.circuit_failure_threshold} 次失败
-                  </span>
-                ) : null}
+                <CircuitBadge attempt={attempt} />
               </div>
             ) : null}
 
@@ -396,15 +385,161 @@ function AttemptCard({
                   <span className="text-sm font-semibold text-rose-600 dark:text-rose-400">
                     错误
                   </span>
+                  {attempt.reason_code && attempt.reason_code !== attempt.reason ? (
+                    <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-600 dark:bg-rose-900/30 dark:text-rose-300">
+                      {attempt.reason_code}
+                    </span>
+                  ) : null}
                 </div>
                 <pre className="whitespace-pre-wrap break-all text-xs font-mono text-rose-800 dark:text-rose-200 leading-relaxed">
                   {attempt.reason}
                 </pre>
               </div>
             ) : null}
+
+            {/* Expandable structured error details */}
+            {!success && !skipped && hasStructuredDetails(attempt) ? (
+              <DisclosureSection label="结构化错误详情">
+                <div className="space-y-1.5 text-xs">
+                  {attempt.error_code ? (
+                    <div className="flex items-baseline gap-2">
+                      <span className="shrink-0 text-slate-500 dark:text-slate-400">错误码:</span>
+                      <span className="font-mono text-slate-700 dark:text-slate-300">
+                        {getGatewayErrorShortLabel(attempt.error_code)} ({attempt.error_code})
+                      </span>
+                    </div>
+                  ) : null}
+                  {attempt.error_category ? (
+                    <div className="flex items-baseline gap-2">
+                      <span className="shrink-0 text-slate-500 dark:text-slate-400">错误分类:</span>
+                      <span className="font-mono text-slate-700 dark:text-slate-300">{attempt.error_category}</span>
+                    </div>
+                  ) : null}
+                  {attempt.decision ? (
+                    <div className="flex items-baseline gap-2">
+                      <span className="shrink-0 text-slate-500 dark:text-slate-400">决策:</span>
+                      <span className="font-mono text-slate-700 dark:text-slate-300">{attempt.decision}</span>
+                    </div>
+                  ) : null}
+                  {attempt.selection_method ? (
+                    <div className="flex items-baseline gap-2">
+                      <span className="shrink-0 text-slate-500 dark:text-slate-400">选择方式:</span>
+                      <span className="font-mono text-slate-700 dark:text-slate-300">{attempt.selection_method}</span>
+                    </div>
+                  ) : null}
+                  {hasCircuitBreaker ? (
+                    <div className="flex items-baseline gap-2">
+                      <span className="shrink-0 text-slate-500 dark:text-slate-400">熔断器变化:</span>
+                      <span className="font-mono text-slate-700 dark:text-slate-300">
+                        {attempt.circuit_state_before ?? "—"}
+                        {attempt.circuit_state_after && attempt.circuit_state_after !== attempt.circuit_state_before ? (
+                          <> <ArrowRight className="inline h-3 w-3" /> {attempt.circuit_state_after}</>
+                        ) : null}
+                        {attempt.circuit_failure_count != null && attempt.circuit_failure_threshold != null
+                          ? ` (${attempt.circuit_failure_count}/${attempt.circuit_failure_threshold})`
+                          : null}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+              </DisclosureSection>
+            ) : null}
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+// --- Helper components for AttemptCard ---
+
+const DECISION_BADGE_TONES: Record<string, string> = {
+  switch: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+  retry: "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+  abort: "bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300",
+};
+
+function DecisionTags({ attempt }: { attempt: ProviderChainAttempt }) {
+  const tags: Array<{ label: string; value: string; tone: string }> = [];
+
+  if (attempt.selection_method) {
+    tags.push({
+      label: "选择",
+      value: attempt.selection_method,
+      tone: "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+    });
+  }
+  if (attempt.decision) {
+    tags.push({
+      label: "决策",
+      value: attempt.decision,
+      tone: DECISION_BADGE_TONES[attempt.decision] ?? "bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300",
+    });
+  }
+  if (attempt.error_code) {
+    tags.push({
+      label: "错误码",
+      value: getGatewayErrorShortLabel(attempt.error_code),
+      tone: "bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300",
+    });
+  }
+  if (attempt.error_category) {
+    tags.push({
+      label: "分类",
+      value: attempt.error_category,
+      tone: "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300",
+    });
+  }
+
+  if (tags.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {tags.map((tag) => (
+        <span
+          key={tag.label}
+          className={cn("rounded-full px-2 py-0.5 text-xs font-medium", tag.tone)}
+          title={tag.label}
+        >
+          {tag.value}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function CircuitBadge({ attempt }: { attempt: ProviderChainAttempt }) {
+  const state = attempt.circuit_state_after ?? attempt.circuit_state_before;
+  return (
+    <>
+      <span
+        className={cn(
+          "rounded-md px-2 py-0.5 text-xs font-bold text-white",
+          state === "open"
+            ? "bg-rose-500"
+            : state === "half_open"
+              ? "bg-amber-500"
+              : "bg-emerald-500"
+        )}
+      >
+        {state}
+      </span>
+      {attempt.circuit_failure_count != null && attempt.circuit_failure_threshold != null ? (
+        <span className="text-sm text-slate-600 dark:text-slate-300">
+          {attempt.circuit_failure_count}/{attempt.circuit_failure_threshold} 次失败
+        </span>
+      ) : null}
+    </>
+  );
+}
+
+function hasStructuredDetails(attempt: ProviderChainAttempt): boolean {
+  return (
+    attempt.error_code != null ||
+    attempt.error_category != null ||
+    attempt.decision != null ||
+    attempt.selection_method != null ||
+    attempt.circuit_state_before != null ||
+    attempt.circuit_state_after != null
   );
 }
