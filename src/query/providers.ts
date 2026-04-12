@@ -2,13 +2,15 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import {
   providerClaudeTerminalLaunchCommand,
   providerDelete,
+  providerOAuthFetchLimits,
   providerSetEnabled,
   providersList,
   providersReorder,
   type CliKey,
+  type OAuthLimitsResult,
   type ProviderSummary,
 } from "../services/providers/providers";
-import { providersKeys } from "./keys";
+import { oauthLimitsKeys, providersKeys } from "./keys";
 
 export function useProvidersListQuery(cliKey: CliKey, options?: { enabled?: boolean }) {
   return useQuery({
@@ -75,5 +77,21 @@ export function useProviderClaudeTerminalLaunchCommandMutation() {
   return useMutation({
     mutationFn: (input: { providerId: number }) =>
       providerClaudeTerminalLaunchCommand(input.providerId),
+  });
+}
+
+export function useOAuthLimitsQuery(providerId: number, enabled: boolean) {
+  return useQuery({
+    queryKey: oauthLimitsKeys.detail(providerId),
+    queryFn: async (): Promise<OAuthLimitsResult> => {
+      const result = await providerOAuthFetchLimits(providerId);
+      if (!result) {
+        return { limit_5h_text: null, limit_weekly_text: null };
+      }
+      return result;
+    },
+    enabled,
+    staleTime: 180_000,
+    refetchInterval: 180_000,
   });
 }

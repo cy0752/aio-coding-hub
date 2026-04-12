@@ -12,7 +12,7 @@ import {
   type ProviderEditorDialogFormOutput,
 } from "../../schemas/providerEditorDialog";
 import { normalizeBaseUrlRows } from "./baseUrl";
-import { validateProviderClaudeModels } from "./validators";
+import { validateProviderClaudeModels } from "../../schemas/providerEditorDialog";
 import type { ActionContext } from "./providerEditorActionContext";
 
 export type { ActionContext } from "./providerEditorActionContext";

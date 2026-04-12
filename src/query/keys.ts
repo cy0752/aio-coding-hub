@@ -17,6 +17,12 @@ function normalizeKeyParts(values: readonly string[]): string[] {
   return unique;
 }
 
+const oauthLimitsAllKey = ["oauthLimits"] as const;
+export const oauthLimitsKeys = {
+  all: oauthLimitsAllKey,
+  detail: (providerId: number) => [...oauthLimitsAllKey, providerId] as const,
+};
+
 const providersAllKey = ["providers"] as const;
 export const providersKeys = {
   all: providersAllKey,

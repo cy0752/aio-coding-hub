@@ -6,7 +6,8 @@ import type {
 import type { ProviderEditorDialogFormInput } from "../../schemas/providerEditorDialog";
 import type { BaseUrlRow, ProviderBaseUrlMode } from "./types";
 
-export type ActionContext = {
+/** Provider identity and lifecycle */
+export type ProviderActionContext = {
   mode: "create" | "edit";
   cliKey: CliKey;
   editingProviderId: number | null;
@@ -14,23 +15,34 @@ export type ActionContext = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSaved: (cliKey: CliKey) => void;
-  saving: boolean;
-  setSaving: (v: boolean) => void;
+};
+
+/** OAuth status payload shared by auth-related fields */
+export type OAuthStatusValue = {
+  connected: boolean;
+  provider_type?: string;
+  email?: string;
+  expires_at?: number;
+  has_refresh_token?: boolean;
+} | null;
+
+/** Authentication and bridge state */
+export type AuthActionContext = {
   authMode: "api_key" | "oauth" | "cx2cc";
-  oauthStatus: {
-    connected: boolean;
-    provider_type?: string;
-    email?: string;
-    expires_at?: number;
-    has_refresh_token?: boolean;
-  } | null;
-  setOauthStatus: (v: ActionContext["oauthStatus"]) => void;
+  oauthStatus: OAuthStatusValue;
+  setOauthStatus: (v: OAuthStatusValue) => void;
   oauthLoading: boolean;
   setOauthLoading: (v: boolean) => void;
   cx2ccSourceValue: string;
   isCodexGatewaySource: boolean;
   sourceProviderId: number | null;
   selectedCx2ccSourceProvider: ProviderSummary | null;
+};
+
+/** Form data and UI state */
+export type FormActionContext = {
+  saving: boolean;
+  setSaving: (v: boolean) => void;
   baseUrlMode: ProviderBaseUrlMode;
   baseUrlRows: BaseUrlRow[];
   tags: string[];
@@ -54,3 +66,6 @@ export type ActionContext = {
     ) => void;
   };
 };
+
+/** Complete ActionContext = intersection of all sub-contexts */
+export type ActionContext = ProviderActionContext & AuthActionContext & FormActionContext;

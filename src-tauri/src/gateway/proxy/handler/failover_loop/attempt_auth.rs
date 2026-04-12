@@ -1,8 +1,8 @@
-//! Usage: Auth header injection and body cleaning for a single attempt.
+//! Usage: Auth header injection for a single attempt.
 //!
-//! Centralizes the logic for building request headers, injecting
-//! provider-specific authentication, and cleaning the request body
-//! before sending upstream.
+//! Centralizes the logic for building request headers and injecting
+//! provider-specific authentication before sending upstream.
+//! Body cleaning lives in `request_sanitizer`.
 
 use super::attempt_executor::RetryLoopState;
 use super::provider_iterator::PreparedProvider;
@@ -31,10 +31,7 @@ pub(super) fn inject_auth(
     headers: &mut HeaderMap,
 ) -> Result<(), Box<FailoverAttempt>> {
     // Always clear all auth headers (fail-closed).
-    headers.remove(header::AUTHORIZATION);
-    headers.remove("x-api-key");
-    headers.remove("x-goog-api-key");
-    headers.remove("x-goog-api-client");
+    clear_all_auth_headers(headers);
 
     let upstream_cli_key = if prepared.cx2cc_active {
         prepared
@@ -68,33 +65,6 @@ pub(super) fn inject_auth(
     }
 
     Ok(())
-}
-
-/// Clean request body (e.g. remove empty text blocks for Claude OAuth).
-pub(super) fn clean_body(input: &RequestContext, prepared: &PreparedProvider) -> Bytes {
-    if input.cli_key == "claude" && prepared.oauth_adapter.is_some() {
-        if let Ok(mut json) =
-            serde_json::from_slice::<serde_json::Value>(&prepared.upstream_body_bytes)
-        {
-            if let Some(messages) = json.get_mut("messages").and_then(|v| v.as_array_mut()) {
-                for msg in messages {
-                    if let Some(content) = msg.get_mut("content").and_then(|v| v.as_array_mut()) {
-                        content.retain(|block| {
-                            if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                                !text.trim().is_empty()
-                            } else {
-                                true
-                            }
-                        });
-                    }
-                }
-            }
-            return serde_json::to_vec(&json)
-                .unwrap_or_else(|_| prepared.upstream_body_bytes.to_vec())
-                .into();
-        }
-    }
-    prepared.upstream_body_bytes.clone()
 }
 
 // ---------------------------------------------------------------------------

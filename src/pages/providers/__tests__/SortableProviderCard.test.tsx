@@ -1,13 +1,12 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { toast } from "sonner";
 import { SortableProviderCard, type SortableProviderCardProps } from "../SortableProviderCard";
 import {
   providerOAuthFetchLimits,
   type ProviderSummary,
 } from "../../../services/providers/providers";
+import { createTestQueryClient, createQueryWrapper } from "../../../test/utils/reactQuery";
 
-vi.mock("sonner", () => ({ toast: vi.fn() }));
 vi.mock("../../../services/consoleLog", () => ({ logToConsole: vi.fn() }));
 vi.mock("../../../services/providers/providers", async () => {
   const actual = await vi.importActual<typeof import("../../../services/providers/providers")>(
@@ -80,7 +79,10 @@ function renderCard(
     onDelete: vi.fn(),
     ...extraProps,
   };
-  return render(<SortableProviderCard {...defaultProps} />);
+  const queryClient = createTestQueryClient();
+  return render(<SortableProviderCard {...defaultProps} />, {
+    wrapper: createQueryWrapper(queryClient),
+  });
 }
 
 describe("pages/providers/SortableProviderCard", () => {
@@ -128,7 +130,7 @@ describe("pages/providers/SortableProviderCard", () => {
   });
 
   it("fetches OAuth limits on button click", async () => {
-    vi.mocked(providerOAuthFetchLimits).mockResolvedValueOnce({
+    vi.mocked(providerOAuthFetchLimits).mockResolvedValue({
       limit_5h_text: "100 requests",
       limit_weekly_text: "1000 requests",
     });
@@ -142,18 +144,22 @@ describe("pages/providers/SortableProviderCard", () => {
     await waitFor(() => expect(vi.mocked(providerOAuthFetchLimits)).toHaveBeenCalledWith(1));
   });
 
-  it("polls OAuth limits every 3 minutes", () => {
-    const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
+  it("auto-fetches OAuth limits on mount for oauth providers", async () => {
+    vi.mocked(providerOAuthFetchLimits).mockResolvedValue({
+      limit_5h_text: "auto",
+      limit_weekly_text: "200",
+    });
 
     renderCard({
       auth_mode: "oauth",
     });
 
-    expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 180000);
+    // React Query auto-fetches because enabled=true for OAuth providers
+    await waitFor(() => expect(vi.mocked(providerOAuthFetchLimits)).toHaveBeenCalled());
   });
 
   it("renders provider-specific short-window labels for Gemini OAuth limits", async () => {
-    vi.mocked(providerOAuthFetchLimits).mockResolvedValueOnce({
+    vi.mocked(providerOAuthFetchLimits).mockResolvedValue({
       limit_short_label: "短窗",
       limit_5h_text: "88",
       limit_weekly_text: "300",
@@ -171,7 +177,7 @@ describe("pages/providers/SortableProviderCard", () => {
   });
 
   it("forces Gemini OAuth limits to render with a generic short-window label", async () => {
-    vi.mocked(providerOAuthFetchLimits).mockResolvedValueOnce({
+    vi.mocked(providerOAuthFetchLimits).mockResolvedValue({
       limit_short_label: "1h",
       limit_5h_text: "88",
       limit_weekly_text: "300",
@@ -189,7 +195,7 @@ describe("pages/providers/SortableProviderCard", () => {
   });
 
   it("handles null result from fetchLimits", async () => {
-    vi.mocked(providerOAuthFetchLimits).mockResolvedValueOnce(null);
+    vi.mocked(providerOAuthFetchLimits).mockResolvedValue(null);
 
     renderCard({
       auth_mode: "oauth",
@@ -197,11 +203,13 @@ describe("pages/providers/SortableProviderCard", () => {
 
     fireEvent.click(screen.getByText("OAuth"));
 
-    await waitFor(() => expect(vi.mocked(toast)).toHaveBeenCalledWith("获取 OAuth 用量失败"));
+    await waitFor(() => expect(vi.mocked(providerOAuthFetchLimits)).toHaveBeenCalled());
+    // React Query queryFn maps null to empty limits; no toast is shown
+    expect(screen.queryByText(/5h:/)).not.toBeInTheDocument();
   });
 
   it("handles fetchLimits error", async () => {
-    vi.mocked(providerOAuthFetchLimits).mockRejectedValueOnce(new Error("fetch error"));
+    vi.mocked(providerOAuthFetchLimits).mockRejectedValue(new Error("fetch error"));
 
     renderCard({
       auth_mode: "oauth",
@@ -209,9 +217,9 @@ describe("pages/providers/SortableProviderCard", () => {
 
     fireEvent.click(screen.getByText("OAuth"));
 
-    await waitFor(() =>
-      expect(vi.mocked(toast)).toHaveBeenCalledWith(expect.stringContaining("获取 OAuth 用量失败"))
-    );
+    await waitFor(() => expect(vi.mocked(providerOAuthFetchLimits)).toHaveBeenCalled());
+    // React Query absorbs the error; no toast is shown
+    expect(screen.queryByText(/5h:/)).not.toBeInTheDocument();
   });
 
   it("renders note when present", () => {

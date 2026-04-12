@@ -18,6 +18,7 @@ mod provider_gate;
 mod provider_iterator;
 mod provider_limits;
 mod request_end_helpers;
+mod request_sanitizer;
 mod response_router;
 mod retry_engine;
 mod send;
@@ -86,8 +87,8 @@ use crate::gateway::streams::{
 };
 use crate::gateway::thinking_signature_rectifier;
 use crate::gateway::util::{
-    body_for_introspection, build_target_url, ensure_cli_required_headers, inject_provider_auth,
-    now_unix_seconds, strip_hop_headers,
+    body_for_introspection, build_target_url, clear_all_auth_headers, ensure_cli_required_headers,
+    inject_provider_auth, now_unix_seconds, strip_hop_headers,
 };
 use crate::shared::mutex_ext::MutexExt;
 

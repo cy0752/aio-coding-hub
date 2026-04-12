@@ -112,7 +112,7 @@ pub(super) async fn execute_attempt(
     }
 
     // --- Clean body + send upstream ---
-    let cleaned_body = attempt_auth::clean_body(input, prepared);
+    let cleaned_body = request_sanitizer::clean_body(input, prepared);
 
     let send_result =
         send::send_upstream(ctx, input.req_method.clone(), url, headers, cleaned_body).await;

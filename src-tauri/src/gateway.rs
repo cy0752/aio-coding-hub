@@ -1,4 +1,5 @@
 mod billing_header_rectifier;
+pub(crate) mod cli_auth;
 mod claude_metadata_user_id_injection;
 mod codex_session_id;
 pub(crate) mod events;

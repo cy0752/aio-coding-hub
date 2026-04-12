@@ -2,7 +2,7 @@ import { FREE_TAG } from "../../constants/providers";
 import type {
   ProviderEditorDialogFormInput,
 } from "../../schemas/providerEditorDialog";
-import type { CliKey, ProviderSummary } from "../../services/providers/providers";
+import { getProviderTypeInfo, type CliKey, type ProviderSummary } from "../../services/providers/providers";
 import { cliLongLabel } from "../../constants/clis";
 import type { ProviderEditorInitialValues } from "./providerDuplicate";
 import type { BaseUrlRow } from "./types";
@@ -111,10 +111,7 @@ export function buildBaseUrlRows(
 export function deriveAuthMode(
   provider: ProviderSummary | null | undefined
 ): "api_key" | "oauth" | "cx2cc" {
-  if (!provider) return "api_key";
-  if (provider.bridge_type === "cx2cc" || provider.source_provider_id != null) return "cx2cc";
-  if (provider.auth_mode === "oauth") return "oauth";
-  return "api_key";
+  return getProviderTypeInfo(provider).effectiveAuthMode;
 }
 
 export function deriveCx2ccSourceValue(
