@@ -66,9 +66,8 @@ describe("ui/Sidebar", () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText("检查中")).toBeInTheDocument();
+    expect(screen.getByText("检查中 · —")).toBeInTheDocument();
     expect(screen.queryByText("NEW")).not.toBeInTheDocument();
-    expect(screen.getByText("—")).toBeInTheDocument();
   });
 
   it("renders the GitHub link before the app name when no update candidate exists", () => {
@@ -178,7 +177,7 @@ describe("ui/Sidebar", () => {
     expect(onNavClick).toHaveBeenCalledTimes(1);
   });
 
-  it("uses stopped tone for the port pill when gateway is stopped", () => {
+  it("uses stopped tone for the status pill when gateway is stopped", () => {
     gatewayMetaRef.current = {
       gatewayAvailable: "available",
       gateway: { running: false, port: null },
@@ -191,8 +190,8 @@ describe("ui/Sidebar", () => {
       </MemoryRouter>
     );
 
-    const portPill = screen.getByText("37123");
-    expect(portPill.className).toContain("bg-slate-100");
-    expect(portPill.className).not.toContain("bg-emerald-50");
+    const statusPill = screen.getByText("已停止 · 37123");
+    expect(statusPill.className).toContain("bg-slate-100");
+    expect(statusPill.className).not.toContain("bg-emerald-50");
   });
 });

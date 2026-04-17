@@ -51,7 +51,7 @@ export type SidebarProps = {
 };
 
 export function Sidebar({ isOpen = true, onNavClick, className }: SidebarProps) {
-  const { statusText, statusTone, portTone, portText, hasUpdate, isPortable } = useGatewayStatus();
+  const { statusText, statusTone, portText, hasUpdate, isPortable } = useGatewayStatus();
   const devPreview = useDevPreviewData();
 
   function handleNavClick() {
