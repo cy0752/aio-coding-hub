@@ -433,27 +433,25 @@ fn default_proxy_request_error(operation: &str, proxy_url: &str, err: &reqwest::
     )
 }
 
-fn format_proxy_request_error<'a>(
-    operation: &'a str,
-    proxy_url: &'a str,
-    test_url: &'a str,
-    err: &'a reqwest::Error,
-) -> impl std::future::Future<Output = String> + 'a {
-    async move {
-        if proxy_uses_socks5_local_dns(proxy_url)
-            && proxy_test_url_has_hostname(test_url)
-            && is_socks5_handshake_eof(err)
-            && probe_socks5h_fallback(proxy_url, test_url).await
-        {
-            return format!(
-                "{} {}",
-                default_proxy_request_error(operation, proxy_url, err),
-                build_socks5_local_dns_hint(proxy_url, test_url)
-            );
-        }
-
-        default_proxy_request_error(operation, proxy_url, err)
+async fn format_proxy_request_error(
+    operation: &str,
+    proxy_url: &str,
+    test_url: &str,
+    err: &reqwest::Error,
+) -> String {
+    if proxy_uses_socks5_local_dns(proxy_url)
+        && proxy_test_url_has_hostname(test_url)
+        && is_socks5_handshake_eof(err)
+        && probe_socks5h_fallback(proxy_url, test_url).await
+    {
+        return format!(
+            "{} {}",
+            default_proxy_request_error(operation, proxy_url, err),
+            build_socks5_local_dns_hint(proxy_url, test_url)
+        );
     }
+
+    default_proxy_request_error(operation, proxy_url, err)
 }
 
 fn parse_exit_ip_response(body: &str) -> Option<String> {
@@ -674,7 +672,7 @@ fn extend_self_hosts(targets: &mut BTreeSet<String>, host: &str, local_hosts: &L
 
     targets.insert(normalized.clone());
     if local_hosts.all.contains(&normalized) {
-        targets.extend(resolve_host_tokens(&normalized, local_hosts).into_iter());
+        targets.extend(resolve_host_tokens(&normalized, local_hosts));
     }
 }
 
