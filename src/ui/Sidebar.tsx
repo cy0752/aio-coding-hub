@@ -153,18 +153,10 @@ export function Sidebar({ isOpen = true, onNavClick, className }: SidebarProps) 
 
         <div className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">
           <div className="rounded-xl bg-slate-100/90 px-3 py-2.5 dark:bg-slate-800">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center justify-between gap-2">
               <span className="text-sm font-medium text-slate-600 dark:text-slate-300">网关</span>
               <span className={cn("rounded-full px-2 py-0.5 text-[12px] font-medium", statusTone)}>
-                {statusText}
-              </span>
-              <span
-                className={cn(
-                  "rounded-full px-2 py-0.5 font-mono text-[12px] font-medium",
-                  portTone
-                )}
-              >
-                {portText}
+                {statusText} · {portText}
               </span>
             </div>
           </div>
