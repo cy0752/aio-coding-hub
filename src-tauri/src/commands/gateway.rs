@@ -274,3 +274,57 @@ pub(crate) async fn gateway_stop(
 
     Ok(status)
 }
+
+#[tauri::command]
+pub(crate) fn gateway_upstream_proxy_validate(
+    app: tauri::AppHandle,
+    proxy_url: String,
+    proxy_username: Option<String>,
+    proxy_password: Option<String>,
+) -> Result<(), String> {
+    let cfg = settings::read(&app).map_err(|err| err.to_string())?;
+    let proxy_url = gateway::http_client::build_effective_proxy_url(
+        Some(&proxy_url),
+        proxy_username.as_deref(),
+        proxy_password.as_deref(),
+    )?;
+    let context = gateway::http_client::self_check_context_from_settings(&cfg)
+        .map_err(|err| err.to_string())?;
+    gateway::http_client::validate_proxy_with_context(proxy_url.as_deref(), &context)
+}
+
+#[tauri::command]
+pub(crate) async fn gateway_upstream_proxy_test(
+    app: tauri::AppHandle,
+    proxy_url: String,
+    proxy_username: Option<String>,
+    proxy_password: Option<String>,
+) -> Result<(), String> {
+    let cfg = settings::read(&app).map_err(|err| err.to_string())?;
+    let proxy_url = gateway::http_client::build_effective_proxy_url(
+        Some(&proxy_url),
+        proxy_username.as_deref(),
+        proxy_password.as_deref(),
+    )?;
+    let context = gateway::http_client::self_check_context_from_settings(&cfg)
+        .map_err(|err| err.to_string())?;
+    gateway::http_client::test_proxy_with_context(proxy_url.as_deref(), &context).await
+}
+
+#[tauri::command]
+pub(crate) async fn gateway_upstream_proxy_detect_ip(
+    app: tauri::AppHandle,
+    proxy_url: String,
+    proxy_username: Option<String>,
+    proxy_password: Option<String>,
+) -> Result<String, String> {
+    let cfg = settings::read(&app).map_err(|err| err.to_string())?;
+    let proxy_url = gateway::http_client::build_effective_proxy_url(
+        Some(&proxy_url),
+        proxy_username.as_deref(),
+        proxy_password.as_deref(),
+    )?;
+    let context = gateway::http_client::self_check_context_from_settings(&cfg)
+        .map_err(|err| err.to_string())?;
+    gateway::http_client::detect_proxy_exit_ip_with_context(proxy_url.as_deref(), &context).await
+}

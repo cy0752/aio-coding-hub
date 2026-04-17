@@ -456,6 +456,10 @@ export function CliManagerPage() {
         cx2ccDropStopSequences: next.cx2cc_drop_stop_sequences,
         cx2ccCleanSchema: next.cx2cc_clean_schema,
         cx2ccFilterBatchTool: next.cx2cc_filter_batch_tool,
+        upstreamProxyEnabled: next.upstream_proxy_enabled,
+        upstreamProxyUrl: next.upstream_proxy_url,
+        upstreamProxyUsername: next.upstream_proxy_username,
+        upstreamProxyPassword: next.upstream_proxy_password,
       });
 
       if (!updated) {
@@ -474,8 +478,12 @@ export function CliManagerPage() {
       toast("已保存");
       return updated;
     } catch (err) {
-      logToConsole("error", "更新通用网关参数失败", { error: String(err) });
-      toast("更新通用网关参数失败：请稍后重试");
+      const formatted = formatActionFailureToast("更新通用网关参数", err);
+      logToConsole("error", "更新通用网关参数失败", {
+        error: formatted.raw,
+        error_code: formatted.error_code ?? undefined,
+      });
+      toast(formatted.toast);
       setUpstreamFirstByteTimeoutSeconds(prev.upstream_first_byte_timeout_seconds);
       setUpstreamStreamIdleTimeoutSeconds(prev.upstream_stream_idle_timeout_seconds);
       setUpstreamRequestTimeoutNonStreamingSeconds(

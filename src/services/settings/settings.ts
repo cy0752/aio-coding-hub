@@ -1,5 +1,5 @@
 import type { HomeUsagePeriod } from "../../constants/homeUsagePeriods";
-import { commands } from "../../generated/bindings";
+import { commands, type SettingsUpdate as GeneratedSettingsUpdate } from "../../generated/bindings";
 import type { CliKey } from "../providers/providers";
 import { invokeGeneratedIpc, type GeneratedCommandResult } from "../generatedIpc";
 
@@ -73,6 +73,10 @@ export type AppSettings = {
   cx2cc_drop_stop_sequences: boolean;
   cx2cc_clean_schema: boolean;
   cx2cc_filter_batch_tool: boolean;
+  upstream_proxy_enabled: boolean;
+  upstream_proxy_url: string;
+  upstream_proxy_username: string;
+  upstream_proxy_password: string;
 };
 
 export type SettingsSetInput = {
@@ -128,7 +132,73 @@ export type SettingsSetInput = {
   cx2ccDropStopSequences?: boolean;
   cx2ccCleanSchema?: boolean;
   cx2ccFilterBatchTool?: boolean;
+  upstreamProxyEnabled?: boolean;
+  upstreamProxyUrl?: string;
+  upstreamProxyUsername?: string;
+  upstreamProxyPassword?: string;
 };
+
+function toGeneratedSettingsUpdate(input: SettingsSetInput): GeneratedSettingsUpdate {
+  return {
+    preferredPort: input.preferredPort,
+    showHomeHeatmap: input.showHomeHeatmap ?? null,
+    showHomeUsage: input.showHomeUsage ?? null,
+    homeUsagePeriod: input.homeUsagePeriod ?? null,
+    gatewayListenMode: input.gatewayListenMode ?? null,
+    gatewayCustomListenAddress: input.gatewayCustomListenAddress ?? null,
+    autoStart: input.autoStart,
+    startMinimized: input.startMinimized ?? null,
+    trayEnabled: input.trayEnabled ?? null,
+    enableCliProxyStartupRecovery: input.enableCliProxyStartupRecovery ?? null,
+    logRetentionDays: input.logRetentionDays,
+    providerCooldownSeconds: input.providerCooldownSeconds ?? null,
+    providerBaseUrlPingCacheTtlSeconds: input.providerBaseUrlPingCacheTtlSeconds ?? null,
+    upstreamFirstByteTimeoutSeconds: input.upstreamFirstByteTimeoutSeconds ?? null,
+    upstreamStreamIdleTimeoutSeconds: input.upstreamStreamIdleTimeoutSeconds ?? null,
+    upstreamRequestTimeoutNonStreamingSeconds:
+      input.upstreamRequestTimeoutNonStreamingSeconds ?? null,
+    interceptAnthropicWarmupRequests: input.interceptAnthropicWarmupRequests ?? null,
+    enableThinkingSignatureRectifier: input.enableThinkingSignatureRectifier ?? null,
+    enableThinkingBudgetRectifier: input.enableThinkingBudgetRectifier ?? null,
+    enableBillingHeaderRectifier: input.enableBillingHeaderRectifier ?? null,
+    enableClaudeMetadataUserIdInjection: input.enableClaudeMetadataUserIdInjection ?? null,
+    enableCacheAnomalyMonitor: input.enableCacheAnomalyMonitor ?? null,
+    enableTaskCompleteNotify: input.enableTaskCompleteNotify ?? null,
+    enableNotificationSound: input.enableNotificationSound ?? null,
+    enableResponseFixer: input.enableResponseFixer ?? null,
+    responseFixerFixEncoding: input.responseFixerFixEncoding ?? null,
+    responseFixerFixSseFormat: input.responseFixerFixSseFormat ?? null,
+    responseFixerFixTruncatedJson: input.responseFixerFixTruncatedJson ?? null,
+    verboseProviderError: input.verboseProviderError ?? null,
+    failoverMaxAttemptsPerProvider: input.failoverMaxAttemptsPerProvider,
+    failoverMaxProvidersToTry: input.failoverMaxProvidersToTry,
+    circuitBreakerFailureThreshold: input.circuitBreakerFailureThreshold ?? null,
+    circuitBreakerOpenDurationMinutes: input.circuitBreakerOpenDurationMinutes ?? null,
+    updateReleasesUrl: input.updateReleasesUrl ?? null,
+    wslAutoConfig: input.wslAutoConfig ?? null,
+    wslTargetCli: input.wslTargetCli ?? null,
+    cliPriorityOrder: input.cliPriorityOrder ?? null,
+    wslHostAddressMode: input.wslHostAddressMode ?? null,
+    wslCustomHostAddress: input.wslCustomHostAddress ?? null,
+    codexHomeMode: input.codexHomeMode ?? null,
+    codexHomeOverride: input.codexHomeOverride ?? null,
+    cx2CcFallbackModelOpus: input.cx2ccFallbackModelOpus ?? null,
+    cx2CcFallbackModelSonnet: input.cx2ccFallbackModelSonnet ?? null,
+    cx2CcFallbackModelHaiku: input.cx2ccFallbackModelHaiku ?? null,
+    cx2CcFallbackModelMain: input.cx2ccFallbackModelMain ?? null,
+    cx2CcModelReasoningEffort: input.cx2ccModelReasoningEffort ?? null,
+    cx2CcServiceTier: input.cx2ccServiceTier ?? null,
+    cx2CcDisableResponseStorage: input.cx2ccDisableResponseStorage ?? null,
+    cx2CcEnableReasoningToThinking: input.cx2ccEnableReasoningToThinking ?? null,
+    cx2CcDropStopSequences: input.cx2ccDropStopSequences ?? null,
+    cx2CcCleanSchema: input.cx2ccCleanSchema ?? null,
+    cx2CcFilterBatchTool: input.cx2ccFilterBatchTool ?? null,
+    upstreamProxyEnabled: input.upstreamProxyEnabled ?? null,
+    upstreamProxyUrl: input.upstreamProxyUrl ?? null,
+    upstreamProxyUsername: input.upstreamProxyUsername ?? null,
+    upstreamProxyPassword: input.upstreamProxyPassword ?? null,
+  };
+}
 
 export async function settingsGet() {
   return invokeGeneratedIpc<AppSettings>({
@@ -139,13 +209,11 @@ export async function settingsGet() {
 }
 
 export async function settingsSet(input: SettingsSetInput) {
+  const update = toGeneratedSettingsUpdate(input);
   return invokeGeneratedIpc<AppSettings>({
     title: "更新设置失败",
     cmd: "settings_set",
-    args: { update: input },
-    invoke: () =>
-      commands.settingsSet(input as Parameters<typeof commands.settingsSet>[0]) as Promise<
-        GeneratedCommandResult<AppSettings>
-      >,
+    args: { update },
+    invoke: () => commands.settingsSet(update) as Promise<GeneratedCommandResult<AppSettings>>,
   });
 }

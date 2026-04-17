@@ -349,7 +349,7 @@ describe("pages/CliManagerPage", () => {
     expect(toast).toHaveBeenCalledWith("已保存");
 
     fireEvent.click(screen.getByRole("button", { name: "persist-common" }));
-    await waitFor(() => expect(toast).toHaveBeenCalledWith("更新通用网关参数失败：请稍后重试"));
+    await waitFor(() => expect(toast).toHaveBeenCalledWith("更新通用网关参数失败：common boom"));
   });
 
   it("blocks app settings writes when settings query is readonly", () => {

@@ -72,6 +72,10 @@ pub(crate) struct SettingsUpdate {
     pub cx2cc_drop_stop_sequences: Option<bool>,
     pub cx2cc_clean_schema: Option<bool>,
     pub cx2cc_filter_batch_tool: Option<bool>,
+    pub upstream_proxy_enabled: Option<bool>,
+    pub upstream_proxy_url: Option<String>,
+    pub upstream_proxy_username: Option<String>,
+    pub upstream_proxy_password: Option<String>,
 }
 
 #[tauri::command]
@@ -176,6 +180,10 @@ pub(crate) async fn settings_set_impl<R: tauri::Runtime>(
         cx2cc_drop_stop_sequences,
         cx2cc_clean_schema,
         cx2cc_filter_batch_tool,
+        upstream_proxy_enabled,
+        upstream_proxy_url,
+        upstream_proxy_username,
+        upstream_proxy_password,
     } = update;
 
     let app_for_work = app.clone();
@@ -252,6 +260,23 @@ pub(crate) async fn settings_set_impl<R: tauri::Runtime>(
             let cx2cc_clean_schema = cx2cc_clean_schema.unwrap_or(previous.cx2cc_clean_schema);
             let cx2cc_filter_batch_tool =
                 cx2cc_filter_batch_tool.unwrap_or(previous.cx2cc_filter_batch_tool);
+            let upstream_proxy_enabled =
+                upstream_proxy_enabled.unwrap_or(previous.upstream_proxy_enabled);
+            let upstream_proxy_url = upstream_proxy_url
+                .unwrap_or(previous.upstream_proxy_url)
+                .trim()
+                .to_string();
+            let upstream_proxy_username = upstream_proxy_username
+                .unwrap_or(previous.upstream_proxy_username)
+                .trim()
+                .to_string();
+            let upstream_proxy_password =
+                upstream_proxy_password.unwrap_or(previous.upstream_proxy_password);
+            if upstream_proxy_enabled && upstream_proxy_url.is_empty() {
+                return Err(
+                    "upstream_proxy_url cannot be empty when upstream proxy is enabled".into(),
+                );
+            }
             let provider_base_url_ping_cache_ttl_seconds = provider_base_url_ping_cache_ttl_seconds
                 .unwrap_or(previous.provider_base_url_ping_cache_ttl_seconds);
             let upstream_first_byte_timeout_seconds = upstream_first_byte_timeout_seconds
@@ -356,7 +381,13 @@ pub(crate) async fn settings_set_impl<R: tauri::Runtime>(
                 cx2cc_drop_stop_sequences,
                 cx2cc_clean_schema,
                 cx2cc_filter_batch_tool,
+                upstream_proxy_enabled,
+                upstream_proxy_url,
+                upstream_proxy_username,
+                upstream_proxy_password,
             };
+
+            crate::gateway::http_client::validate_proxy_for_settings(&settings)?;
 
             let next_settings = settings::write(&app_for_work, &settings)?;
             Ok(next_settings)
@@ -364,18 +395,20 @@ pub(crate) async fn settings_set_impl<R: tauri::Runtime>(
     )
     .await?;
 
-    app.state::<resident::ResidentState>()
-        .set_tray_enabled(next_settings.tray_enabled);
+    if let Some(resident) = app.try_state::<resident::ResidentState>() {
+        resident.set_tray_enabled(next_settings.tray_enabled);
+    }
 
     // Hot-reload circuit breaker config into the running gateway
-    {
-        let gw = app.state::<GatewayState>();
+    if let Some(gw) = app.try_state::<GatewayState>() {
         let manager = gw.0.lock_or_recover();
         manager.update_circuit_config(
             next_settings.circuit_breaker_failure_threshold.max(1),
             (next_settings.circuit_breaker_open_duration_minutes as i64).saturating_mul(60),
         );
     }
+
+    crate::gateway::http_client::sync_from_settings(&next_settings)?;
 
     tracing::info!(
         preferred_port = next_settings.preferred_port,

@@ -104,6 +104,10 @@ export type AppSettings = {
   cx2cc_drop_stop_sequences: boolean;
   cx2cc_clean_schema: boolean;
   cx2cc_filter_batch_tool: boolean;
+  upstream_proxy_enabled: boolean;
+  upstream_proxy_url: string;
+  upstream_proxy_username: string;
+  upstream_proxy_password: string;
 };
 export type ClaudeModels = {
   main_model?: string | null;
@@ -229,6 +233,10 @@ export type SettingsUpdate = {
   cx2CcDropStopSequences: boolean | null;
   cx2CcCleanSchema: boolean | null;
   cx2CcFilterBatchTool: boolean | null;
+  upstreamProxyEnabled: boolean | null;
+  upstreamProxyUrl: string | null;
+  upstreamProxyUsername: string | null;
+  upstreamProxyPassword: string | null;
 };
 export type WslHostAddressMode = "auto" | "custom";
 export type WslTargetCli = { claude: boolean; codex: boolean; gemini: boolean };

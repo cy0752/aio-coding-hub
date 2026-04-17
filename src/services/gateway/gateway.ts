@@ -1,4 +1,4 @@
-import { invokeServiceWithDetails } from "../invokeServiceCommand";
+import { invokeServiceCommand, invokeServiceWithDetails } from "../invokeServiceCommand";
 
 export type GatewayStatus = {
   running: boolean;
@@ -92,4 +92,51 @@ export async function gatewayCircuitResetCli(cliKey: string) {
     { cliKey },
     { cliKey }
   );
+}
+
+type GatewayUpstreamProxyAuthInput = {
+  proxyUrl: string;
+  proxyUsername?: string;
+  proxyPassword?: string;
+};
+
+export async function gatewayUpstreamProxyValidate({
+  proxyUrl,
+  proxyUsername,
+  proxyPassword,
+}: GatewayUpstreamProxyAuthInput) {
+  return invokeServiceCommand<void>({
+    title: "代理配置验证失败",
+    cmd: "gateway_upstream_proxy_validate",
+    args: { proxyUrl, proxyUsername, proxyPassword },
+    details: { proxyUrl },
+    nullResultBehavior: "return_fallback",
+  });
+}
+
+export async function gatewayUpstreamProxyTest({
+  proxyUrl,
+  proxyUsername,
+  proxyPassword,
+}: GatewayUpstreamProxyAuthInput) {
+  return invokeServiceCommand<void>({
+    title: "代理连接测试失败",
+    cmd: "gateway_upstream_proxy_test",
+    args: { proxyUrl, proxyUsername, proxyPassword },
+    details: { proxyUrl },
+    nullResultBehavior: "return_fallback",
+  });
+}
+
+export async function gatewayUpstreamProxyDetectIp({
+  proxyUrl,
+  proxyUsername,
+  proxyPassword,
+}: GatewayUpstreamProxyAuthInput) {
+  return invokeServiceCommand<string>({
+    title: "代理出口 IP 检测失败",
+    cmd: "gateway_upstream_proxy_detect_ip",
+    args: { proxyUrl, proxyUsername, proxyPassword },
+    details: { proxyUrl },
+  });
 }

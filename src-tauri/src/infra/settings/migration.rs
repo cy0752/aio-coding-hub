@@ -587,9 +587,30 @@ fn migrate_raise_stream_idle_timeout_default(
     true
 }
 
+fn migrate_add_upstream_proxy(settings: &mut AppSettings, schema_version_present: bool) -> bool {
+    // v31: Add upstream proxy settings (default disabled, empty URL).
+    migrate_bump_schema_version(
+        settings,
+        schema_version_present,
+        SCHEMA_VERSION_ADD_UPSTREAM_PROXY,
+    )
+}
+
+fn migrate_add_upstream_proxy_credentials(
+    settings: &mut AppSettings,
+    schema_version_present: bool,
+) -> bool {
+    // v32: Add upstream proxy username/password settings (default empty).
+    migrate_bump_schema_version(
+        settings,
+        schema_version_present,
+        SCHEMA_VERSION_ADD_UPSTREAM_PROXY_CREDENTIALS,
+    )
+}
+
 type SettingsMigration = fn(&mut AppSettings, bool) -> bool;
 
-const SETTINGS_MIGRATIONS: [SettingsMigration; 24] = [
+const SETTINGS_MIGRATIONS: [SettingsMigration; 26] = [
     migrate_disable_upstream_timeouts,
     migrate_add_gateway_rectifiers,
     migrate_add_circuit_breaker_notice,
@@ -614,6 +635,8 @@ const SETTINGS_MIGRATIONS: [SettingsMigration; 24] = [
     migrate_add_billing_header_rectifier,
     migrate_add_cli_priority_order,
     migrate_raise_stream_idle_timeout_default,
+    migrate_add_upstream_proxy,
+    migrate_add_upstream_proxy_credentials,
 ];
 
 fn apply_settings_migrations(settings: &mut AppSettings, schema_version_present: bool) -> bool {

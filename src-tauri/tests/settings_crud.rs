@@ -180,3 +180,152 @@ fn gateway_check_port_available_fails_when_settings_json_is_corrupted() {
         "unexpected error: {err_text}"
     );
 }
+
+#[test]
+fn settings_set_via_command_syncs_runtime_upstream_proxy_state() {
+    let app = support::TestApp::new();
+    let handle = app.handle();
+
+    let mut enable_update = settings_command_update_json(38000);
+    enable_update["upstreamProxyEnabled"] = serde_json::json!(true);
+    enable_update["upstreamProxyUrl"] = serde_json::json!("http://127.0.0.1:7890");
+
+    let enabled =
+        aio_coding_hub_lib::test_support::settings_set_via_command_json(&handle, enable_update)
+            .expect("enable upstream proxy");
+
+    assert!(json_bool(&enabled, "upstream_proxy_enabled"));
+    assert_eq!(
+        enabled["upstream_proxy_url"],
+        serde_json::json!("http://127.0.0.1:7890")
+    );
+    assert_eq!(
+        aio_coding_hub_lib::test_support::gateway_upstream_proxy_url_json(&handle)
+            .expect("runtime proxy url"),
+        Some("http://127.0.0.1:7890".to_string())
+    );
+
+    let mut disable_update = settings_command_update_json(38000);
+    disable_update["upstreamProxyEnabled"] = serde_json::json!(false);
+    disable_update["upstreamProxyUrl"] = serde_json::json!("http://127.0.0.1:7890");
+
+    let disabled =
+        aio_coding_hub_lib::test_support::settings_set_via_command_json(&handle, disable_update)
+            .expect("disable upstream proxy");
+
+    assert!(!json_bool(&disabled, "upstream_proxy_enabled"));
+    assert_eq!(
+        aio_coding_hub_lib::test_support::gateway_upstream_proxy_url_json(&handle)
+            .expect("runtime proxy disabled"),
+        None
+    );
+}
+
+#[test]
+fn settings_set_via_command_syncs_runtime_upstream_proxy_state_with_separate_credentials() {
+    let app = support::TestApp::new();
+    let handle = app.handle();
+
+    let mut update = settings_command_update_json(38000);
+    update["upstreamProxyEnabled"] = serde_json::json!(true);
+    update["upstreamProxyUrl"] = serde_json::json!("http://127.0.0.1:7890");
+    update["upstreamProxyUsername"] = serde_json::json!("proxy-user");
+    update["upstreamProxyPassword"] = serde_json::json!("secret");
+
+    let enabled = aio_coding_hub_lib::test_support::settings_set_via_command_json(&handle, update)
+        .expect("enable upstream proxy with credentials");
+
+    assert!(json_bool(&enabled, "upstream_proxy_enabled"));
+    assert_eq!(
+        enabled["upstream_proxy_url"],
+        serde_json::json!("http://127.0.0.1:7890")
+    );
+    assert_eq!(
+        enabled["upstream_proxy_username"],
+        serde_json::json!("proxy-user")
+    );
+    assert_eq!(
+        enabled["upstream_proxy_password"],
+        serde_json::json!("secret")
+    );
+    assert_eq!(
+        aio_coding_hub_lib::test_support::gateway_upstream_proxy_url_json(&handle)
+            .expect("runtime proxy url"),
+        Some("http://127.0.0.1:7890".to_string())
+    );
+}
+
+#[test]
+fn settings_set_via_command_rejects_invalid_upstream_proxy() {
+    let app = support::TestApp::new();
+    let handle = app.handle();
+
+    let mut update = settings_command_update_json(38000);
+    update["upstreamProxyEnabled"] = serde_json::json!(true);
+    update["upstreamProxyUrl"] = serde_json::json!("ftp://127.0.0.1:7890");
+
+    let err = aio_coding_hub_lib::test_support::settings_set_via_command_json(&handle, update)
+        .expect_err("invalid upstream proxy should fail");
+    let err_text = err.to_string();
+    assert!(
+        err_text.contains("Invalid proxy scheme"),
+        "unexpected error: {err_text}"
+    );
+}
+
+#[test]
+fn settings_set_via_command_rejects_proxy_password_without_username() {
+    let app = support::TestApp::new();
+    let handle = app.handle();
+
+    let mut update = settings_command_update_json(38000);
+    update["upstreamProxyEnabled"] = serde_json::json!(true);
+    update["upstreamProxyUrl"] = serde_json::json!("http://127.0.0.1:7890");
+    update["upstreamProxyPassword"] = serde_json::json!("secret");
+
+    let err = aio_coding_hub_lib::test_support::settings_set_via_command_json(&handle, update)
+        .expect_err("password without username should fail");
+    let err_text = err.to_string();
+    assert!(
+        err_text.contains("upstream_proxy_username cannot be empty"),
+        "unexpected error: {err_text}"
+    );
+}
+
+#[test]
+fn settings_set_via_command_rejects_mixed_proxy_credentials() {
+    let app = support::TestApp::new();
+    let handle = app.handle();
+
+    let mut update = settings_command_update_json(38000);
+    update["upstreamProxyEnabled"] = serde_json::json!(true);
+    update["upstreamProxyUrl"] = serde_json::json!("http://inline:secret@127.0.0.1:7890");
+    update["upstreamProxyUsername"] = serde_json::json!("proxy-user");
+    update["upstreamProxyPassword"] = serde_json::json!("override");
+
+    let err = aio_coding_hub_lib::test_support::settings_set_via_command_json(&handle, update)
+        .expect_err("mixed proxy credentials should fail");
+    let err_text = err.to_string();
+    assert!(
+        err_text.contains("either in proxy URL or username/password fields"),
+        "unexpected error: {err_text}"
+    );
+}
+
+#[test]
+fn settings_set_via_command_requires_proxy_url_when_enabled() {
+    let app = support::TestApp::new();
+    let handle = app.handle();
+
+    let mut update = settings_command_update_json(38000);
+    update["upstreamProxyEnabled"] = serde_json::json!(true);
+    update["upstreamProxyUrl"] = serde_json::json!("   ");
+
+    let err = aio_coding_hub_lib::test_support::settings_set_via_command_json(&handle, update)
+        .expect_err("enabled proxy without url should fail");
+    let err_text = err.to_string();
+    assert!(
+        err_text.contains("upstream_proxy_url cannot be empty"),
+        "unexpected error: {err_text}"
+    );
+}

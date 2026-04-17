@@ -477,6 +477,14 @@ pub fn settings_set_via_command_json<R: tauri::Runtime>(
     serialize_json(persisted)
 }
 
+pub fn gateway_upstream_proxy_url_json<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> crate::shared::error::AppResult<Option<String>> {
+    let settings = crate::settings::read(app)?;
+    crate::gateway::http_client::sync_from_settings(&settings)?;
+    Ok(crate::gateway::http_client::get_current_proxy_url())
+}
+
 // ---------------------------------------------------------------------------
 // Workspaces
 // ---------------------------------------------------------------------------

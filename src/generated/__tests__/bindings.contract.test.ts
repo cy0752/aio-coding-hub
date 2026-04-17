@@ -6,7 +6,7 @@ import heartbeatSource from "../../../src-tauri/src/app/heartbeat_watchdog.rs?ra
 import noticeSource from "../../../src-tauri/src/app/notice.rs?raw";
 
 function extractStringUnionLiterals(source: string, typeName: string) {
-  const match = source.match(new RegExp(`export type ${typeName} = ([^;]+);`));
+  const match = source.match(new RegExp(`export type ${typeName} = (.+)$`, "m"));
   expect(match).toBeTruthy();
   return Array.from(match![1].matchAll(/"([^"]+)"/g), (item) => item[1]);
 }
@@ -31,6 +31,17 @@ describe("generated/bindings.ts contract", () => {
     expect(bindingsSource).not.toContain('"last_7"');
     expect(bindingsSource).not.toContain('"last_15"');
     expect(bindingsSource).not.toContain('"last_30"');
+  });
+
+  it("includes upstream proxy settings in the generated settings contract", () => {
+    expect(bindingsSource).toContain("upstream_proxy_enabled");
+    expect(bindingsSource).toContain("upstream_proxy_url");
+    expect(bindingsSource).toContain("upstream_proxy_username");
+    expect(bindingsSource).toContain("upstream_proxy_password");
+    expect(bindingsSource).toContain("upstreamProxyEnabled");
+    expect(bindingsSource).toContain("upstreamProxyUrl");
+    expect(bindingsSource).toContain("upstreamProxyUsername");
+    expect(bindingsSource).toContain("upstreamProxyPassword");
   });
 
   it("keeps Rust app event emitters aligned with shared frontend constants", () => {

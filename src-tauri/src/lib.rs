@@ -336,6 +336,9 @@ pub fn run() {
             gateway_circuit_status,
             gateway_circuit_reset_provider,
             gateway_circuit_reset_cli,
+            gateway_upstream_proxy_validate,
+            gateway_upstream_proxy_test,
+            gateway_upstream_proxy_detect_ip,
             // ── wsl ──
             wsl_detect,
             wsl_host_address_get,

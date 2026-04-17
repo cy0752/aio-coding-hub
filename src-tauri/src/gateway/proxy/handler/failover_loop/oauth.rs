@@ -66,8 +66,9 @@ pub(super) async fn resolve_effective_credential(
             (&details.oauth_refresh_token, &details.oauth_token_uri)
         {
             if !refresh_token.trim().is_empty() && !token_uri.trim().is_empty() {
+                let client = state.client();
                 match crate::gateway::oauth::refresh::refresh_provider_token_with_retry(
-                    &state.client,
+                    &client,
                     token_uri,
                     details.oauth_client_id.as_deref().unwrap_or(""),
                     details.oauth_client_secret.as_deref(),
@@ -197,8 +198,9 @@ pub(super) async fn refresh_oauth_credential_after_401(
         }
     };
 
+    let client = state.client();
     let refreshed = crate::gateway::oauth::refresh::refresh_provider_token_with_retry(
-        &state.client,
+        &client,
         token_uri,
         details.oauth_client_id.as_deref().unwrap_or(""),
         details.oauth_client_secret.as_deref(),

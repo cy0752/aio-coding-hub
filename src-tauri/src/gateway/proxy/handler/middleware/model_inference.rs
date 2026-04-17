@@ -11,8 +11,7 @@
 use super::{MiddlewareAction, ProxyContext};
 use crate::gateway::proxy::compute_observe_request;
 use crate::gateway::proxy::handler::early_error::{
-    build_early_error_log_ctx, early_error_contract, respond_early_error_with_spawn,
-    EarlyErrorKind,
+    build_early_error_log_ctx, early_error_contract, respond_early_error_with_spawn, EarlyErrorKind,
 };
 use crate::gateway::util::{infer_requested_model_info, LARGE_REQUEST_BODY_BYTES};
 
@@ -39,7 +38,8 @@ impl ModelInferenceMiddleware {
             let contract = early_error_contract(EarlyErrorKind::LargeBodyMissingModel);
             let message = large_body_missing_model_message(ctx.body_bytes.len());
             let log_ctx = build_early_error_log_ctx(&ctx);
-            let resp = respond_early_error_with_spawn(&log_ctx, contract, message, None, None, None);
+            let resp =
+                respond_early_error_with_spawn(&log_ctx, contract, message, None, None, None);
             return MiddlewareAction::ShortCircuit(resp);
         }
 
@@ -51,11 +51,12 @@ pub(in crate::gateway::proxy::handler) fn is_large_body_missing_model(
     body_len: usize,
     requested_model: Option<&str>,
 ) -> bool {
-    body_len >= LARGE_REQUEST_BODY_BYTES
-        && requested_model.map(str::is_empty).unwrap_or(true)
+    body_len >= LARGE_REQUEST_BODY_BYTES && requested_model.map(str::is_empty).unwrap_or(true)
 }
 
-pub(in crate::gateway::proxy::handler) fn large_body_missing_model_message(body_len: usize) -> String {
+pub(in crate::gateway::proxy::handler) fn large_body_missing_model_message(
+    body_len: usize,
+) -> String {
     let body_mb = body_len as f64 / (1024.0 * 1024.0);
     let threshold_mb = LARGE_REQUEST_BODY_BYTES / (1024 * 1024);
     format!(
@@ -108,10 +109,7 @@ mod tests {
     fn diagnostic_message_mentions_actual_size_and_threshold() {
         let message = large_body_missing_model_message(LARGE_REQUEST_BODY_BYTES + 1);
         assert!(message.contains("model"));
-        assert!(message.contains(&format!(
-            "{} MB",
-            LARGE_REQUEST_BODY_BYTES / (1024 * 1024)
-        )));
+        assert!(message.contains(&format!("{} MB", LARGE_REQUEST_BODY_BYTES / (1024 * 1024))));
         assert!(message.contains("truncated"));
     }
 }

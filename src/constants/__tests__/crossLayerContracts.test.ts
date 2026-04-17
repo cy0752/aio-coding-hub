@@ -16,7 +16,7 @@ function extractRustStringConst(source: string, constName: string) {
 }
 
 function extractBindingsUnionLiterals(source: string, typeName: string) {
-  const match = source.match(new RegExp(`export type ${typeName} = ([^;]+);`));
+  const match = source.match(new RegExp(`export type ${typeName} = (.+)$`, "m"));
   expect(match, `missing generated type ${typeName}`).toBeTruthy();
   return Array.from((match?.[1] ?? "").matchAll(/"([^"]+)"/g), (part) => part[1]);
 }
@@ -70,5 +70,16 @@ describe("cross-layer contracts", () => {
     expect(extractBindingsUnionLiterals(bindingsSource, "HomeUsagePeriod")).toEqual([
       ...HOME_USAGE_PERIOD_VALUES,
     ]);
+  });
+
+  it("keeps upstream proxy fields in the generated settings contract", () => {
+    expect(bindingsSource).toContain("upstream_proxy_enabled");
+    expect(bindingsSource).toContain("upstream_proxy_url");
+    expect(bindingsSource).toContain("upstream_proxy_username");
+    expect(bindingsSource).toContain("upstream_proxy_password");
+    expect(bindingsSource).toContain("upstreamProxyEnabled");
+    expect(bindingsSource).toContain("upstreamProxyUrl");
+    expect(bindingsSource).toContain("upstreamProxyUsername");
+    expect(bindingsSource).toContain("upstreamProxyPassword");
   });
 });

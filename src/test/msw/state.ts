@@ -21,7 +21,7 @@ const DEFAULT_CLI_PROXY_STATUS: CliProxyStatus[] = [
 
 // Default settings matching the Rust backend defaults.
 const DEFAULT_SETTINGS: AppSettings = {
-  schema_version: 29,
+  schema_version: 32,
   preferred_port: 37123,
   show_home_heatmap: true,
   show_home_usage: true,
@@ -78,6 +78,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   cx2cc_drop_stop_sequences: true,
   cx2cc_clean_schema: true,
   cx2cc_filter_batch_tool: true,
+  upstream_proxy_enabled: false,
+  upstream_proxy_url: "",
+  upstream_proxy_username: "",
+  upstream_proxy_password: "",
 };
 
 const DEFAULT_GATEWAY_STATUS: GatewayStatus = {

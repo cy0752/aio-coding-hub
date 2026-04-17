@@ -5,8 +5,11 @@ import {
   gatewayStart,
   gatewayStop,
   gatewayCircuitStatus,
+  gatewayUpstreamProxyDetectIp,
   gatewaySessionsList,
   gatewayStatus,
+  gatewayUpstreamProxyTest,
+  gatewayUpstreamProxyValidate,
   type GatewayActiveSession,
   type GatewayProviderCircuitStatus,
   type GatewayStatus,
@@ -81,7 +84,10 @@ describe("services/gateway/gateway", () => {
       .mockResolvedValueOnce([] as any)
       .mockResolvedValueOnce([] as any)
       .mockResolvedValueOnce(1 as any)
-      .mockResolvedValueOnce(true as any);
+      .mockResolvedValueOnce(true as any)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce("203.0.113.42");
 
     await gatewayStart(37123);
     await gatewayStop();
@@ -90,6 +96,21 @@ describe("services/gateway/gateway", () => {
     await gatewayCircuitStatus("claude");
     await gatewayCircuitStatus("codex");
     await gatewayCircuitStatus("gemini");
+    await gatewayUpstreamProxyValidate({
+      proxyUrl: "http://127.0.0.1:7890",
+      proxyUsername: "proxy-user",
+      proxyPassword: "secret",
+    });
+    await gatewayUpstreamProxyTest({
+      proxyUrl: "http://127.0.0.1:7890",
+      proxyUsername: "proxy-user",
+      proxyPassword: "secret",
+    });
+    await gatewayUpstreamProxyDetectIp({
+      proxyUrl: "http://127.0.0.1:7890",
+      proxyUsername: "proxy-user",
+      proxyPassword: "secret",
+    });
 
     expect(invokeTauriOrNull).toHaveBeenCalledWith("gateway_start", {
       preferredPort: 37123,
@@ -110,6 +131,52 @@ describe("services/gateway/gateway", () => {
     expect(invokeTauriOrNull).toHaveBeenCalledWith("gateway_circuit_status", {
       cliKey: "gemini",
     });
+    expect(invokeTauriOrNull).toHaveBeenCalledWith("gateway_upstream_proxy_validate", {
+      proxyUrl: "http://127.0.0.1:7890",
+      proxyUsername: "proxy-user",
+      proxyPassword: "secret",
+    });
+    expect(invokeTauriOrNull).toHaveBeenCalledWith("gateway_upstream_proxy_test", {
+      proxyUrl: "http://127.0.0.1:7890",
+      proxyUsername: "proxy-user",
+      proxyPassword: "secret",
+    });
+    expect(invokeTauriOrNull).toHaveBeenCalledWith("gateway_upstream_proxy_detect_ip", {
+      proxyUrl: "http://127.0.0.1:7890",
+      proxyUsername: "proxy-user",
+      proxyPassword: "secret",
+    });
+  });
+
+  it("treats null results as success for void proxy commands", async () => {
+    vi.mocked(invokeTauriOrNull).mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+
+    await expect(
+      gatewayUpstreamProxyValidate({
+        proxyUrl: "http://127.0.0.1:7890",
+        proxyUsername: "proxy-user",
+        proxyPassword: "secret",
+      })
+    ).resolves.toBeNull();
+    await expect(
+      gatewayUpstreamProxyTest({
+        proxyUrl: "http://127.0.0.1:7890",
+        proxyUsername: "proxy-user",
+        proxyPassword: "secret",
+      })
+    ).resolves.toBeNull();
+  });
+
+  it("returns proxy exit ip from tauri command", async () => {
+    vi.mocked(invokeTauriOrNull).mockResolvedValueOnce("203.0.113.42");
+
+    await expect(
+      gatewayUpstreamProxyDetectIp({
+        proxyUrl: "http://127.0.0.1:7890",
+        proxyUsername: "proxy-user",
+        proxyPassword: "secret",
+      })
+    ).resolves.toBe("203.0.113.42");
   });
 
   it("rethrows invoke errors and logs details", async () => {

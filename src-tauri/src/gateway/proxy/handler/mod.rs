@@ -346,8 +346,7 @@ mod tests {
         assert_eq!(body_too_large.error_category, None);
         assert!(!body_too_large.excluded_from_stats);
 
-        let large_body_missing_model =
-            early_error_contract(EarlyErrorKind::LargeBodyMissingModel);
+        let large_body_missing_model = early_error_contract(EarlyErrorKind::LargeBodyMissingModel);
         assert_eq!(large_body_missing_model.status, StatusCode::BAD_REQUEST);
         assert_eq!(
             large_body_missing_model.error_code,

@@ -235,8 +235,9 @@ pub(super) async fn prepare_gemini_oauth(
     effective_credential: &str,
     provider_base_url_base: &mut String,
 ) -> Option<GeminiOAuthPrepared> {
+    let client = input.state.client();
     match gemini_oauth::prepare_upstream_request(
-        &input.state.client,
+        &client,
         effective_credential.trim(),
         input.forwarded_path.as_str(),
         input.query.as_deref(),

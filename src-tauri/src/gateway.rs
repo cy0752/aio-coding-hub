@@ -3,6 +3,7 @@ mod claude_metadata_user_id_injection;
 pub(crate) mod cli_auth;
 mod codex_session_id;
 pub(crate) mod events;
+pub(crate) mod http_client;
 pub(crate) mod listen;
 mod manager;
 pub(crate) mod oauth;

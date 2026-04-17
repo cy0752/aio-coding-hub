@@ -5,7 +5,6 @@ use crate::{
 };
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 use tokio::sync::oneshot;
 
 use super::codex_session_id::CodexSessionIdCache;
@@ -40,8 +39,6 @@ type RunningGatewayHandles = (
     tauri::async_runtime::JoinHandle<()>,
 );
 
-const UPSTREAM_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-
 #[derive(Default)]
 pub struct GatewayManager {
     running: Option<RunningGateway>,
@@ -51,7 +48,6 @@ pub struct GatewayManager {
 pub(super) struct GatewayAppState {
     pub(super) app: tauri::AppHandle,
     pub(super) db: db::Db,
-    pub(super) client: reqwest::Client,
     pub(super) log_tx: tokio::sync::mpsc::Sender<request_logs::RequestLogInsert>,
     pub(super) circuit: Arc<circuit_breaker::CircuitBreaker>,
     pub(super) session: Arc<session_manager::SessionManager>,
@@ -59,6 +55,18 @@ pub(super) struct GatewayAppState {
     pub(super) recent_errors: Arc<Mutex<RecentErrorCache>>,
     pub(super) latency_cache: Arc<Mutex<ProviderBaseUrlPingCache>>,
 }
+
+impl GatewayAppState {
+    pub(super) fn client(&self) -> reqwest::Client {
+        super::http_client::get()
+    }
+
+    #[cfg(test)]
+    pub(super) fn current_client() -> reqwest::Client {
+        super::http_client::get()
+    }
+}
+
 fn port_candidates(preferred: Option<u16>) -> impl Iterator<Item = u16> {
     let mut candidates = Vec::with_capacity(
         (settings::MAX_GATEWAY_PORT - settings::DEFAULT_GATEWAY_PORT + 2) as usize,
@@ -206,13 +214,15 @@ impl GatewayManager {
             crate::app::heartbeat_watchdog::gated_emit(app, GATEWAY_LOG_EVENT_NAME, payload);
         }
 
-        let client = reqwest::Client::builder()
-            .user_agent(format!(
-                "aio-coding-hub-gateway/{}",
-                env!("CARGO_PKG_VERSION")
-            ))
-            .connect_timeout(UPSTREAM_CONNECT_TIMEOUT)
-            .build()
+        // Initialize the global HTTP client with proxy settings from config.
+        super::http_client::sync_runtime_context(port, &bind_host, &base_host);
+        let proxy_url = super::http_client::build_effective_proxy_url(
+            Some(cfg.upstream_proxy_url.as_str()),
+            Some(cfg.upstream_proxy_username.as_str()),
+            Some(cfg.upstream_proxy_password.as_str()),
+        )
+        .map_err(|e| format!("{}: {e}", GatewayErrorCode::HttpClientInit.as_str()))?;
+        super::http_client::init(proxy_url.as_deref())
             .map_err(|e| format!("{}: {e}", GatewayErrorCode::HttpClientInit.as_str()))?;
 
         let (log_tx, log_task) = request_logs::start_buffered_writer(app.clone(), db.clone());
@@ -248,7 +258,6 @@ impl GatewayManager {
         let state = GatewayAppState {
             app: app.clone(),
             db: db.clone(),
-            client,
             log_tx,
             circuit,
             session: session.clone(),
@@ -456,10 +465,15 @@ impl GatewayManager {
 
 #[cfg(test)]
 mod tests {
-    use super::{GatewayManager, RunningGateway};
+    use super::{GatewayAppState, GatewayManager, RunningGateway};
     use crate::{circuit_breaker, providers, session_manager};
     use std::collections::HashMap;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::sync::mpsc;
     use std::sync::{Arc, Mutex};
+    use std::thread;
+    use std::time::Duration;
     use tempfile::tempdir;
     use tokio::sync::oneshot;
 
@@ -491,6 +505,25 @@ mod tests {
             oauth_refresh_shutdown: oauth_refresh_shutdown_tx,
             oauth_refresh_task: tauri::async_runtime::JoinHandle::Tokio(rt.spawn(async {})),
         }
+    }
+
+    fn spawn_http_proxy_server() -> (String, mpsc::Receiver<String>) {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind proxy listener");
+        let addr = listener.local_addr().expect("proxy addr");
+        let (tx, rx) = mpsc::channel();
+
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept request");
+            let mut buf = [0_u8; 4096];
+            let size = stream.read(&mut buf).expect("read request");
+            let request = String::from_utf8_lossy(&buf[..size]).to_string();
+            tx.send(request).expect("send request");
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                .expect("write response");
+        });
+
+        (format!("http://127.0.0.1:{}", addr.port()), rx)
     }
 
     #[test]
@@ -636,5 +669,38 @@ mod tests {
             .expect("lock recent_errors")
             .has_active_error_for_tests(now_unix, 88, "fp-cli-reset");
         assert!(!cached);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn gateway_app_state_client_follows_hot_reloaded_proxy() {
+        let (proxy_a, rx_a) = spawn_http_proxy_server();
+        let (proxy_b, rx_b) = spawn_http_proxy_server();
+
+        crate::gateway::http_client::sync_runtime_context(37123, "127.0.0.1", "127.0.0.1");
+        crate::gateway::http_client::init(Some(&proxy_a)).expect("init proxy a");
+
+        let response = GatewayAppState::current_client()
+            .get("http://example.com/")
+            .send()
+            .await
+            .expect("request via proxy a");
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let first_request = rx_a
+            .recv_timeout(Duration::from_secs(3))
+            .expect("proxy a should receive request");
+        assert!(first_request.starts_with("GET http://example.com/ HTTP/1.1"));
+
+        crate::gateway::http_client::apply_proxy(Some(&proxy_b)).expect("switch to proxy b");
+
+        let response = GatewayAppState::current_client()
+            .get("http://example.com/")
+            .send()
+            .await
+            .expect("request via proxy b");
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let second_request = rx_b
+            .recv_timeout(Duration::from_secs(3))
+            .expect("proxy b should receive request");
+        assert!(second_request.starts_with("GET http://example.com/ HTTP/1.1"));
     }
 }
