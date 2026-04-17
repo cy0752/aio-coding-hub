@@ -602,7 +602,7 @@ fn patch_updates_sandbox_dotted_mode_when_present() {
 }
 
 #[test]
-fn patch_remote_compaction_enabled_updates_provider_name_to_openai() {
+fn patch_remote_compaction_enabled_renames_provider_table_to_openai() {
     let input = r#"model_provider = "aio"
 
 [model_providers.aio]
@@ -622,16 +622,18 @@ wire_api = "responses"
 
     let s = String::from_utf8(out).expect("utf8");
     assert!(s.contains("model_provider = \"OpenAI\""), "{s}");
+    assert!(s.contains("[model_providers.OpenAI]"), "{s}");
     assert!(s.contains("name = \"OpenAI\""), "{s}");
+    assert!(!s.contains("[model_providers.aio]"), "{s}");
     assert!(s.contains("[features]"), "{s}");
     assert!(s.contains("remote_compaction = true"), "{s}");
 }
 
 #[test]
-fn patch_remote_compaction_disabled_reverts_provider_name_to_aio() {
+fn patch_remote_compaction_disabled_reverts_provider_table_to_aio() {
     let input = r#"model_provider = "OpenAI"
 
-[model_providers.aio]
+[model_providers.OpenAI]
 name = "OpenAI"
 base_url = "http://127.0.0.1:37124/v1"
 wire_api = "responses"
@@ -651,12 +653,14 @@ remote_compaction = true
 
     let s = String::from_utf8(out).expect("utf8");
     assert!(s.contains("model_provider = \"aio\""), "{s}");
+    assert!(s.contains("[model_providers.aio]"), "{s}");
     assert!(s.contains("name = \"aio\""), "{s}");
+    assert!(!s.contains("[model_providers.OpenAI]"), "{s}");
     assert!(!s.contains("remote_compaction ="), "{s}");
 }
 
 #[test]
-fn patch_remote_compaction_enabled_creates_model_provider_if_missing() {
+fn patch_remote_compaction_enabled_creates_model_provider_and_renames_table() {
     let input = r#"[model_providers.aio]
 name = "aio"
 base_url = "http://127.0.0.1:37124/v1"
@@ -673,5 +677,7 @@ base_url = "http://127.0.0.1:37124/v1"
 
     let s = String::from_utf8(out).expect("utf8");
     assert!(s.contains("model_provider = \"OpenAI\""), "{s}");
+    assert!(s.contains("[model_providers.OpenAI]"), "{s}");
     assert!(s.contains("name = \"OpenAI\""), "{s}");
+    assert!(!s.contains("[model_providers.aio]"), "{s}");
 }
