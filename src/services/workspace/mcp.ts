@@ -1,6 +1,6 @@
 import { invokeService } from "../invokeServiceCommand";
 
-export type McpTransport = "stdio" | "http";
+export type McpTransport = "stdio" | "http" | "sse";
 
 export type McpServerSummary = {
   id: number;

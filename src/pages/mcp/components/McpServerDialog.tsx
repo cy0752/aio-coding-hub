@@ -105,7 +105,8 @@ function inferTransport(spec: Record<string, unknown>): McpTransport {
   const transportValue =
     readString(spec.type) || readString(spec.transport) || readString(spec.transport_type);
   const transport = transportValue.trim().toLowerCase();
-  if (transport === "http" || transport === "sse") return "http";
+  if (transport === "sse") return "sse";
+  if (transport === "http") return "http";
   if (transport === "stdio") return "stdio";
 
   if (
@@ -334,7 +335,12 @@ export function McpServerDialog({
     setJsonText("");
   }, [open, editTarget]);
 
-  const transportHint = transport === "http" ? "HTTP（远程服务）" : "STDIO（本地命令）";
+  const transportHint =
+    transport === "sse"
+      ? "SSE（Server-Sent Events）"
+      : transport === "http"
+        ? "HTTP（远程服务）"
+        : "STDIO（本地命令）";
 
   function applyDraft(draft: McpDialogDraft) {
     setName((prev) => (draft.name.trim() ? draft.name.trim() : prev.trim() ? prev : "MCP Server"));
@@ -413,17 +419,18 @@ export function McpServerDialog({
     }
 
     try {
+      const isStdio = transport === "stdio";
       const next = await upsertMutation.mutateAsync({
         serverId: editTarget?.id ?? null,
         serverKey: editTarget?.server_key ?? "",
         name,
         transport,
-        command: transport === "stdio" ? command : null,
-        args: transport === "stdio" ? parseLines(argsText) : [],
-        env: transport === "stdio" ? pairsToRecord(envPairs) : {},
-        cwd: transport === "stdio" ? (cwd.trim() ? cwd : null) : null,
-        url: transport === "http" ? url : null,
-        headers: transport === "http" ? pairsToRecord(headerPairs) : {},
+        command: isStdio ? command : null,
+        args: isStdio ? parseLines(argsText) : [],
+        env: isStdio ? pairsToRecord(envPairs) : {},
+        cwd: isStdio ? (cwd.trim() ? cwd : null) : null,
+        url: !isStdio ? url : null,
+        headers: !isStdio ? pairsToRecord(headerPairs) : {},
       });
 
       if (!next) {
@@ -496,7 +503,7 @@ export function McpServerDialog({
               <div className="text-sm font-medium text-slate-700 dark:text-slate-300">类型</div>
               <div className="text-xs text-slate-500 dark:text-slate-400">二选一</div>
             </div>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <div className="mt-2 grid gap-2 sm:grid-cols-3">
               {(
                 [
                   {
@@ -510,6 +517,12 @@ export function McpServerDialog({
                     title: "HTTP",
                     desc: "远程服务（通过 URL 调用）",
                     icon: "⇄",
+                  },
+                  {
+                    value: "sse",
+                    title: "SSE",
+                    desc: "Server-Sent Events（流式远程服务）",
+                    icon: "↯",
                   },
                 ] as const
               ).map((item) => (

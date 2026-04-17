@@ -234,10 +234,11 @@ describe("pages/mcp/components/McpServerDialog", () => {
     expect(screen.getByDisplayValue("bar")).toBeInTheDocument();
   });
 
-  it("fills fields from mcpServers JSON and normalizes sse transport to http", async () => {
+  it("fills fields from mcpServers JSON and preserves sse transport", async () => {
+    const mutateAsync = vi.fn();
     vi.mocked(useMcpServerUpsertMutation).mockReturnValue({
       isPending: false,
-      mutateAsync: vi.fn(),
+      mutateAsync,
     } as any);
     vi.mocked(mcpParseJson).mockResolvedValueOnce({ servers: [] } as any);
 
@@ -257,6 +258,18 @@ describe("pages/mcp/components/McpServerDialog", () => {
     expect(screen.getByDisplayValue("https://example.com/mcp")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Authorization")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Bearer x")).toBeInTheDocument();
+
+    mutateAsync.mockResolvedValueOnce({ id: 1, server_key: "remote", transport: "sse" });
+    fireEvent.click(screen.getByRole("button", { name: "保存并同步" }));
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          transport: "sse",
+          url: "https://example.com/mcp",
+          headers: { Authorization: "Bearer x" },
+        })
+      )
+    );
   });
 
   it("fills fields from CLI-style JSON (codex.servers)", async () => {
