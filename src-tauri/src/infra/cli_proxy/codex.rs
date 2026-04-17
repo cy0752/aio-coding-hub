@@ -45,20 +45,27 @@ pub(super) fn is_codex_proxy_target_state<R: tauri::Runtime>(app: &tauri::AppHan
         Err(_) => return false,
     };
 
-    let expected_provider = format!("model_provider = \"{CODEX_PROVIDER_KEY}\"");
-    let expected_table_unquoted = format!("[model_providers.{CODEX_PROVIDER_KEY}]");
-    let expected_table_double = format!("[model_providers.\"{CODEX_PROVIDER_KEY}\"]");
-    let expected_table_single = format!("[model_providers.'{CODEX_PROVIDER_KEY}']");
-
-    let has_proxy_provider = config.contains(&expected_provider)
-        && (config.contains(&expected_table_unquoted)
-            || config.contains(&expected_table_double)
-            || config.contains(&expected_table_single));
+    // Check for either normal mode ("aio") or remote_compaction mode ("OpenAI")
+    let has_proxy_provider = check_provider_config_basic(&config, CODEX_PROVIDER_KEY)
+        || check_provider_config_basic(&config, "OpenAI");
     let has_proxy_auth = auth.get("OPENAI_API_KEY").and_then(|value| value.as_str())
         == Some(PLACEHOLDER_KEY)
         && auth.get("auth_mode").and_then(|value| value.as_str()) == Some("apikey");
 
     has_proxy_provider && has_proxy_auth
+}
+
+/// Basic check for model_provider and model_providers table (without base_url check).
+fn check_provider_config_basic(config: &str, provider_key: &str) -> bool {
+    let expected_provider = format!("model_provider = \"{provider_key}\"");
+    let expected_table_unquoted = format!("[model_providers.{provider_key}]");
+    let expected_table_double = format!("[model_providers.\"{provider_key}\"]");
+    let expected_table_single = format!("[model_providers.'{provider_key}']");
+
+    config.contains(&expected_provider)
+        && (config.contains(&expected_table_unquoted)
+            || config.contains(&expected_table_double)
+            || config.contains(&expected_table_single))
 }
 
 pub(super) fn rebind_codex_manifest_after_home_change<R: tauri::Runtime>(
@@ -702,7 +709,11 @@ pub(super) fn build_codex_auth_json(current: Option<Vec<u8>>) -> AppResult<Vec<u
     Ok(out)
 }
 
+/// Provider key used when remote_compaction is enabled (Codex requires "OpenAI" for Remote Compact).
+const CODEX_REMOTE_COMPACTION_PROVIDER_KEY: &str = "OpenAI";
+
 /// Check whether Codex proxy config is currently applied.
+/// Supports both normal mode (provider key = "aio") and remote_compaction mode (provider key = "OpenAI").
 pub(super) fn is_proxy_config_applied<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     base_origin: &str,
@@ -722,19 +733,18 @@ pub(super) fn is_proxy_config_applied<R: tauri::Runtime>(
     };
 
     let expected_base = format!("base_url = \"{base_origin}/v1\"");
-    let expected_provider = format!("model_provider = \"{CODEX_PROVIDER_KEY}\"");
-    let expected_table_unquoted = format!("[model_providers.{CODEX_PROVIDER_KEY}]");
-    let expected_table_double = format!("[model_providers.\"{CODEX_PROVIDER_KEY}\"]");
-    let expected_table_single = format!("[model_providers.'{CODEX_PROVIDER_KEY}']");
 
-    if !config.contains(&expected_provider) || !config.contains(&expected_base) {
+    // Check base_url first - this must always be present
+    if !config.contains(&expected_base) {
         return false;
     }
 
-    if !config.contains(&expected_table_unquoted)
-        && !config.contains(&expected_table_double)
-        && !config.contains(&expected_table_single)
-    {
+    // Check for either normal mode ("aio") or remote_compaction mode ("OpenAI")
+    let has_normal_provider = check_provider_config(&config, CODEX_PROVIDER_KEY);
+    let has_remote_compaction_provider =
+        check_provider_config(&config, CODEX_REMOTE_COMPACTION_PROVIDER_KEY);
+
+    if !has_normal_provider && !has_remote_compaction_provider {
         return false;
     }
 
@@ -749,6 +759,22 @@ pub(super) fn is_proxy_config_applied<R: tauri::Runtime>(
     auth.get("OPENAI_API_KEY")
         .and_then(|v| v.as_str())
         .is_some()
+}
+
+/// Check if the config contains the expected model_provider and model_providers table for a given key.
+fn check_provider_config(config: &str, provider_key: &str) -> bool {
+    let expected_provider = format!("model_provider = \"{provider_key}\"");
+    let expected_table_unquoted = format!("[model_providers.{provider_key}]");
+    let expected_table_double = format!("[model_providers.\"{provider_key}\"]");
+    let expected_table_single = format!("[model_providers.'{provider_key}']");
+
+    if !config.contains(&expected_provider) {
+        return false;
+    }
+
+    config.contains(&expected_table_unquoted)
+        || config.contains(&expected_table_double)
+        || config.contains(&expected_table_single)
 }
 
 /// Public entry point called from `sync_enabled` and `rebind_codex_home_after_change`.
