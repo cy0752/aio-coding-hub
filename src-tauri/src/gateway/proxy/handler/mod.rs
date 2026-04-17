@@ -346,6 +346,16 @@ mod tests {
         assert_eq!(body_too_large.error_category, None);
         assert!(!body_too_large.excluded_from_stats);
 
+        let large_body_missing_model =
+            early_error_contract(EarlyErrorKind::LargeBodyMissingModel);
+        assert_eq!(large_body_missing_model.status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            large_body_missing_model.error_code,
+            GatewayErrorCode::LargeBodyMissingModel.as_str()
+        );
+        assert_eq!(large_body_missing_model.error_category, None);
+        assert!(!large_body_missing_model.excluded_from_stats);
+
         let invalid_cli = early_error_contract(EarlyErrorKind::InvalidCliKey);
         assert_eq!(invalid_cli.status, StatusCode::BAD_REQUEST);
         assert_eq!(

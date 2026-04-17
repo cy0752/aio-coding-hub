@@ -1,4 +1,10 @@
-//! Middleware: reads and validates request body size (10MB max).
+//! Middleware: reads the request body into memory, bounded by an OOM-safety
+//! hard cap (`MAX_REQUEST_BODY_BYTES`). The cap is intentionally large — normal
+//! AI CLI traffic (uploads, PDFs, long histories) must pass through transparently.
+//!
+//! A smaller diagnostic threshold (`LARGE_REQUEST_BODY_BYTES`) is applied later
+//! in `ModelInferenceMiddleware` and only affects requests whose `model` field
+//! cannot be inferred. See `model_inference.rs` for that heuristic.
 
 use super::{MiddlewareAction, ProxyContext};
 use crate::gateway::proxy::compute_observe_request;
@@ -55,7 +61,11 @@ impl BodyReaderMiddleware {
 
 pub(in crate::gateway::proxy::handler) fn body_too_large_message(err: &str) -> String {
     let limit_mb = MAX_REQUEST_BODY_BYTES / (1024 * 1024);
-    format!("failed to read request body: {err} (gateway limit: {limit_mb} MB)")
+    format!(
+        "failed to read request body: {err} (gateway hard cap: {limit_mb} MB; \
+         this cap exists only to bound memory — contact the administrator if you \
+         have a legitimate request above this size)"
+    )
 }
 
 #[cfg(test)]

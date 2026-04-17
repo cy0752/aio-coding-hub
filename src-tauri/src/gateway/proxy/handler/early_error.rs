@@ -23,6 +23,7 @@ use axum::response::Response;
 pub(super) enum EarlyErrorKind {
     CliProxyDisabled,
     BodyTooLarge,
+    LargeBodyMissingModel,
     InvalidCliKey,
     NoEnabledProvider,
 }
@@ -46,6 +47,12 @@ pub(super) fn early_error_contract(kind: EarlyErrorKind) -> EarlyErrorContract {
         EarlyErrorKind::BodyTooLarge => EarlyErrorContract {
             status: StatusCode::PAYLOAD_TOO_LARGE,
             error_code: GatewayErrorCode::BodyTooLarge.as_str(),
+            error_category: None,
+            excluded_from_stats: false,
+        },
+        EarlyErrorKind::LargeBodyMissingModel => EarlyErrorContract {
+            status: StatusCode::BAD_REQUEST,
+            error_code: GatewayErrorCode::LargeBodyMissingModel.as_str(),
             error_category: None,
             excluded_from_stats: false,
         },

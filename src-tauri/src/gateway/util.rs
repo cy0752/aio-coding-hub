@@ -8,7 +8,22 @@ use std::io::Read;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub(super) const MAX_REQUEST_BODY_BYTES: usize = 100 * 1024 * 1024;
+/// Hard cap on request body size read into memory. Exists **only** to bound
+/// gateway memory usage (we clone the full body per failover retry); it is not
+/// a product-level limit. Chosen to be large enough that normal AI CLI traffic
+/// — including image uploads, PDFs, long histories — never hits it.
+pub(super) const MAX_REQUEST_BODY_BYTES: usize = 500 * 1024 * 1024;
+
+/// Diagnostic threshold (not a rejection limit). When a request body is larger
+/// than this AND the `model` field cannot be inferred from body/query/path,
+/// the gateway returns a 400 with a helpful message, because a missing model
+/// on an oversized body is almost always an upstream-client bug (truncation,
+/// streaming body, chunking misbehavior). Requests >= this size with a
+/// resolvable model are forwarded normally.
+///
+/// Aligned with claude-code-hub's `LARGE_REQUEST_BODY_BYTES` heuristic.
+pub(super) const LARGE_REQUEST_BODY_BYTES: usize = 10 * 1024 * 1024;
+
 pub(super) const MAX_INTROSPECTION_BODY_BYTES: usize = 2 * 1024 * 1024;
 
 static TRACE_COUNTER: AtomicU64 = AtomicU64::new(1);
