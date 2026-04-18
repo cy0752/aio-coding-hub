@@ -77,7 +77,7 @@ describe("query/usage", () => {
   it("calls usageSummary with tauri runtime and respects options.enabled + refetchIntervalMs branches", async () => {
     setTauriRuntime();
 
-    vi.mocked(usageSummary).mockResolvedValue(null);
+    vi.mocked(usageSummary).mockResolvedValue(null as never);
 
     const client = createTestQueryClient();
     const wrapper = createQueryWrapper(client);
@@ -112,7 +112,7 @@ describe("query/usage", () => {
   it("calls usageSummaryV2 with tauri runtime", async () => {
     setTauriRuntime();
 
-    vi.mocked(usageSummaryV2).mockResolvedValue(null);
+    vi.mocked(usageSummaryV2).mockResolvedValue(null as never);
 
     const client = createTestQueryClient();
     const wrapper = createQueryWrapper(client);

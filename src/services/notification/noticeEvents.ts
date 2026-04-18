@@ -10,11 +10,13 @@
  * WebView 的 Web Notification 权限不会跨会话持久化，导致每次重启都需要重新授权。
  */
 
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-
 import { appEventNames } from "../../constants/appEvents";
 import { logToConsole } from "../consoleLog";
+import { listenDesktopEvent } from "../desktop/event";
+import {
+  desktopNotificationIsPermissionGranted,
+  desktopNotificationNotify,
+} from "../desktop/notification";
 import type { NoticeLevel } from "./notice";
 import { getNotificationSoundEnabled, playNotificationSound } from "./notificationSound";
 
@@ -24,41 +26,21 @@ export type NoticeEventPayload = {
   body: string;
 };
 
-async function isPermissionGrantedNative(): Promise<boolean> {
-  const result = await invoke<boolean | null>("plugin:notification|is_permission_granted");
-  return result === true;
-}
-
-async function sendNotificationNative(options: {
-  title: string;
-  body: string;
-  sound?: string;
-}): Promise<void> {
-  await invoke("plugin:notification|notify", {
-    options: {
-      title: options.title,
-      body: options.body,
-      ...(options.sound ? { sound: options.sound } : {}),
-    },
-  });
-}
-
 export async function listenNoticeEvents(): Promise<() => void> {
-  const unlisten = await listen<NoticeEventPayload>(appEventNames.notice, async (event) => {
-    const payload = event.payload;
+  const unlisten = await listenDesktopEvent<NoticeEventPayload>(appEventNames.notice, async (payload) => {
     if (!payload) return;
 
     try {
-      const permissionGranted = await isPermissionGrantedNative();
+      const permissionGranted = await desktopNotificationIsPermissionGranted();
       if (!permissionGranted) return;
 
       if (getNotificationSoundEnabled()) {
         // Custom sound enabled: play ding.mp3 and send silent notification (no sound param)
         playNotificationSound();
-        await sendNotificationNative({ title: payload.title, body: payload.body });
+        await desktopNotificationNotify({ title: payload.title, body: payload.body });
       } else {
         // Custom sound disabled: normal system notification with default sound
-        await sendNotificationNative({
+        await desktopNotificationNotify({
           title: payload.title,
           body: payload.body,
           sound: "default",

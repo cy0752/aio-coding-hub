@@ -4,6 +4,7 @@
 
 import { useState } from "react";
 import { useNowMs } from "../../hooks/useNowMs";
+import { isPersistedRequestLogInProgress } from "../../services/gateway/requestLogState";
 import { useTraceStore } from "../../services/gateway/traceStore";
 import {
   useRequestAttemptLogsByTraceIdQuery,
@@ -13,12 +14,7 @@ import { Dialog } from "../../ui/Dialog";
 import { TabList } from "../../ui/TabList";
 import { resolveProviderLabel } from "../../pages/providers/baseUrl";
 import { resolveRequestLogErrorObservation } from "./requestLogErrorDetails";
-import {
-  computeStatusBadge,
-  isPersistedRequestLogInProgress,
-  resolveLiveTraceDurationMs,
-  resolveLiveTraceProvider,
-} from "./HomeLogShared";
+import { computeStatusBadge, resolveLiveTraceDurationMs, resolveLiveTraceProvider } from "./HomeLogShared";
 import { RequestLogDetailSummaryTab } from "./RequestLogDetailSummaryTab";
 import { RequestLogDetailChainTab } from "./RequestLogDetailChainTab";
 import { RequestLogDetailRawTab } from "./RequestLogDetailRawTab";

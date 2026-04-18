@@ -3,35 +3,25 @@
 import {
   lazy,
   Suspense,
-  useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
-import { toast } from "sonner";
 import { CLIS } from "../constants/clis";
 import { HomeOverviewPanel } from "../components/home/HomeOverviewPanel";
 import { useDevPreviewData } from "../hooks/useDevPreviewData";
 import { useDocumentVisibility } from "../hooks/useDocumentVisibility";
-import { useWindowForeground } from "../hooks/useWindowForeground";
 import { useGatewaySessionsListQuery } from "../query/gateway";
-import { useProviderLimitUsageV1Query } from "../query/providerLimitUsage";
-import {
-  useRequestLogsIncrementalPollQuery,
-  useRequestLogsListAllQuery,
-} from "../query/requestLogs";
 import { useSettingsQuery } from "../query/settings";
-import { useUsageHourlySeriesQuery } from "../query/usage";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
 import { Dialog } from "../ui/Dialog";
 import { PageHeader } from "../ui/PageHeader";
 import { Spinner } from "../ui/Spinner";
 import { TabList } from "../ui/TabList";
+import { normalizeCliPriorityOrder } from "../services/cli/cliPriorityOrder";
 import { useTraceStore } from "../services/gateway/traceStore";
-import { emitBackgroundTaskVisibilityTrigger } from "../services/backgroundTasks";
 import {
   readHomeOverviewLogsPrimaryLayoutFromStorage,
   subscribeHomeOverviewLogsPrimaryLayout,
@@ -41,6 +31,7 @@ import { resolveHomeUsageWindowDays } from "../utils/homeUsagePeriod";
 import { useHomeCircuitState } from "./home/hooks/useHomeCircuitState";
 import { useHomeSortMode } from "./home/hooks/useHomeSortMode";
 import { useHomeCliProxy } from "./home/hooks/useHomeCliProxy";
+import { useHomeOverviewFeed } from "./home/hooks/useHomeOverviewFeed";
 import { useHomeWorkspaceConfigs } from "./home/hooks/useHomeWorkspaceConfigs";
 
 type HomeTabKey = "overview" | "cost" | "tokenCost";
@@ -99,7 +90,6 @@ export function HomePage() {
   );
 
   const [tab, setTab] = useState<HomeTabKey>("overview");
-  const tabRef = useRef(tab);
   const [selectedLogId, setSelectedLogId] = useState<number | null>(null);
 
   // --- Delegated state hooks ---
@@ -121,91 +111,28 @@ export function HomePage() {
   const cliProxyState = useHomeCliProxy();
   const workspaceConfigs = useHomeWorkspaceConfigs({ enabled: tab === "overview" });
 
-  // --- Overview data queries ---
-  const usageHeatmapQuery = useUsageHourlySeriesQuery(homeUsageWindowDays, {
-    enabled: tab === "overview" && showOverviewUsageSection,
+  const {
+    usageHeatmapRows,
+    usageHeatmapLoading,
+    providerLimitRows,
+    providerLimitLoading,
+    providerLimitRefreshing,
+    providerLimitAvailable,
+    requestLogs,
+    requestLogsLoading,
+    requestLogsRefreshing,
+    requestLogsAvailable,
+    refreshUsageHeatmap,
+    refreshProviderLimit,
+    refreshRequestLogs,
+  } = useHomeOverviewFeed({
+    overviewActive: tab === "overview",
+    foregroundActive,
+    showOverviewUsageSection,
+    homeUsageWindowDays,
   });
-  const usageHeatmapRows = usageHeatmapQuery.data ?? [];
-  const usageHeatmapLoading = usageHeatmapQuery.isFetching;
-
-  const providerLimitQuery = useProviderLimitUsageV1Query(null, {
-    enabled: overviewForegroundPollingEnabled,
-    refetchIntervalMs: overviewForegroundPollingEnabled ? 30000 : false,
-  });
-  const providerLimitRows = providerLimitQuery.data ?? [];
-  const providerLimitLoading = providerLimitQuery.isLoading;
-  const providerLimitRefreshing = providerLimitQuery.isFetching && !providerLimitQuery.isLoading;
-  const providerLimitAvailable: boolean | null = providerLimitQuery.isLoading
-    ? null
-    : providerLimitQuery.data != null;
-
-  const requestLogsQuery = useRequestLogsListAllQuery(50, { enabled: tab === "overview" });
-  useRequestLogsIncrementalPollQuery(50, {
-    enabled: overviewForegroundPollingEnabled,
-    refetchIntervalMs: overviewForegroundPollingEnabled ? 1000 : false,
-  });
-  const requestLogsRaw = requestLogsQuery.data;
-  const requestLogs = useMemo(() => requestLogsRaw ?? [], [requestLogsRaw]);
-  const requestLogsLoading = requestLogsQuery.isLoading;
-  const requestLogsRefreshing = requestLogsQuery.isFetching && !requestLogsQuery.isLoading;
-  const requestLogsAvailable: boolean | null = requestLogsQuery.isLoading
-    ? null
-    : requestLogsQuery.data != null;
-
-  // --- Refresh callbacks ---
-  const refreshUsageHeatmap = useCallback(() => {
-    void usageHeatmapQuery.refetch().then((res) => {
-      if (res.error) toast("刷新用量失败：请查看控制台日志");
-    });
-  }, [usageHeatmapQuery]);
-
-  const refreshRequestLogs = useCallback(() => {
-    void requestLogsQuery.refetch().then((res) => {
-      if (res.error) toast("读取使用记录失败：请查看控制台日志");
-    });
-  }, [requestLogsQuery]);
-
-  const refreshProviderLimit = useCallback(() => {
-    void providerLimitQuery.refetch().then((res) => {
-      if (res.error) toast("读取供应商限额失败：请查看控制台日志");
-    });
-  }, [providerLimitQuery]);
-
-  // Refetch overview data when switching back to overview tab
-  useEffect(() => {
-    const prev = tabRef.current;
-    tabRef.current = tab;
-    if (prev !== "overview" && tab === "overview") {
-      emitBackgroundTaskVisibilityTrigger("home-overview-visible");
-      if (showOverviewUsageSection) {
-        void usageHeatmapQuery.refetch();
-      }
-      void requestLogsQuery.refetch();
-      void providerLimitQuery.refetch();
-    }
-  }, [providerLimitQuery, requestLogsQuery, showOverviewUsageSection, tab, usageHeatmapQuery]);
-
-  useWindowForeground({
-    enabled: tab === "overview",
-    throttleMs: 1000,
-    onForeground: () => {
-      emitBackgroundTaskVisibilityTrigger("home-overview-visible");
-      if (showOverviewUsageSection) {
-        void usageHeatmapQuery.refetch();
-      }
-      void requestLogsQuery.refetch();
-      void providerLimitQuery.refetch();
-    },
-  });
-
   const { pendingSortModeSwitch } = sortMode;
   const { pendingCliProxyEnablePrompt } = cliProxyState;
-
-  useEffect(() => {
-    if (tab === "overview") {
-      emitBackgroundTaskVisibilityTrigger("home-overview-visible");
-    }
-  }, [tab]);
 
   useEffect(() => {
     if (personalizedLayoutEnabled && tab === "cost") setTab("tokenCost");
@@ -240,7 +167,7 @@ export function HomePage() {
             devPreviewEnabled={devPreview.enabled}
             showHomeHeatmap={showHomeHeatmap}
             showHomeUsage={showHomeUsage}
-            cliPriorityOrder={settingsQuery.data?.cli_priority_order}
+            cliPriorityOrder={normalizeCliPriorityOrder(settingsQuery.data?.cli_priority_order)}
             usageWindowDays={homeUsageWindowDays}
             usageHeatmapRows={usageHeatmapRows}
             usageHeatmapLoading={usageHeatmapLoading}
