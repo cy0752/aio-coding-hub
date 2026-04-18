@@ -210,8 +210,9 @@ fn sanitize_dialog_filters(
 
     let mut sanitized = Vec::new();
     for filter in filters {
-        let name = trim_to_non_empty(&filter.name, 128)
-            .ok_or_else(|| "DESKTOP_DIALOG_INVALID_FILTER_NAME: filter name cannot be empty".to_string())?;
+        let name = trim_to_non_empty(&filter.name, 128).ok_or_else(|| {
+            "DESKTOP_DIALOG_INVALID_FILTER_NAME: filter name cannot be empty".to_string()
+        })?;
         let extensions = filter
             .extensions
             .into_iter()
@@ -220,7 +221,9 @@ fn sanitize_dialog_filters(
             .filter(|item| !item.is_empty())
             .collect::<Vec<_>>();
         if extensions.is_empty() {
-            return Err("DESKTOP_DIALOG_INVALID_FILTER: filter extensions cannot be empty".to_string());
+            return Err(
+                "DESKTOP_DIALOG_INVALID_FILTER: filter extensions cannot be empty".to_string(),
+            );
         }
         sanitized.push(DesktopDialogFilter { name, extensions });
     }
@@ -236,8 +239,9 @@ fn apply_dialog_default_path<R: tauri::Runtime>(
         return Ok(dialog);
     };
 
-    let default_path = trim_to_non_empty(&default_path, 4_096)
-        .ok_or_else(|| "DESKTOP_DIALOG_INVALID_DEFAULT_PATH: defaultPath cannot be empty".to_string())?;
+    let default_path = trim_to_non_empty(&default_path, 4_096).ok_or_else(|| {
+        "DESKTOP_DIALOG_INVALID_DEFAULT_PATH: defaultPath cannot be empty".to_string()
+    })?;
     let path = simplify_path(PathBuf::from(default_path));
     if path.is_file() || !path.exists() {
         if let (Some(parent), Some(file_name)) = (path.parent(), path.file_name()) {
@@ -262,7 +266,10 @@ fn build_open_dialog(
         dialog = dialog.set_parent(window);
     }
 
-    if let Some(title) = request.title.and_then(|value| trim_to_non_empty(&value, 256)) {
+    if let Some(title) = request
+        .title
+        .and_then(|value| trim_to_non_empty(&value, 256))
+    {
         dialog = dialog.set_title(title);
     }
 
@@ -279,7 +286,11 @@ fn build_open_dialog(
     }
 
     for filter in sanitize_dialog_filters(request.filters)? {
-        let extensions = filter.extensions.iter().map(|item| item.as_str()).collect::<Vec<_>>();
+        let extensions = filter
+            .extensions
+            .iter()
+            .map(|item| item.as_str())
+            .collect::<Vec<_>>();
         dialog = dialog.add_filter(filter.name, &extensions);
     }
 
@@ -297,7 +308,10 @@ fn build_save_dialog(
         dialog = dialog.set_parent(window);
     }
 
-    if let Some(title) = request.title.and_then(|value| trim_to_non_empty(&value, 256)) {
+    if let Some(title) = request
+        .title
+        .and_then(|value| trim_to_non_empty(&value, 256))
+    {
         dialog = dialog.set_title(title);
     }
 
@@ -308,7 +322,11 @@ fn build_save_dialog(
     }
 
     for filter in sanitize_dialog_filters(request.filters)? {
-        let extensions = filter.extensions.iter().map(|item| item.as_str()).collect::<Vec<_>>();
+        let extensions = filter
+            .extensions
+            .iter()
+            .map(|item| item.as_str())
+            .collect::<Vec<_>>();
         dialog = dialog.add_filter(filter.name, &extensions);
     }
 
@@ -361,10 +379,7 @@ fn desktop_open_allowed_roots(app: &tauri::AppHandle) -> Result<Vec<PathBuf>, St
     ])
 }
 
-fn ensure_desktop_open_path_allowed(
-    app: &tauri::AppHandle,
-    path: &Path,
-) -> Result<(), String> {
+fn ensure_desktop_open_path_allowed(app: &tauri::AppHandle, path: &Path) -> Result<(), String> {
     let normalized_path = normalize_existing_path(path.to_path_buf());
     let allowed = desktop_open_allowed_roots(app)?;
     if allowed
@@ -411,7 +426,10 @@ pub(crate) async fn desktop_dialog_open(
         (true, true) => {
             dialog.pick_folders(move |selection| {
                 let _ = tx.send(selection.map(|paths| {
-                    paths.into_iter().map(file_path_to_string).collect::<Vec<_>>()
+                    paths
+                        .into_iter()
+                        .map(file_path_to_string)
+                        .collect::<Vec<_>>()
                 }));
             });
         }
@@ -423,7 +441,10 @@ pub(crate) async fn desktop_dialog_open(
         (false, true) => {
             dialog.pick_files(move |selection| {
                 let _ = tx.send(selection.map(|paths| {
-                    paths.into_iter().map(file_path_to_string).collect::<Vec<_>>()
+                    paths
+                        .into_iter()
+                        .map(file_path_to_string)
+                        .collect::<Vec<_>>()
                 }));
             });
         }

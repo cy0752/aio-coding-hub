@@ -914,8 +914,7 @@ pub(crate) async fn settings_gateway_rectifier_set(
             settings.enable_response_fixer = update.enable_response_fixer;
             settings.response_fixer_fix_encoding = update.response_fixer_fix_encoding;
             settings.response_fixer_fix_sse_format = update.response_fixer_fix_sse_format;
-            settings.response_fixer_fix_truncated_json =
-                update.response_fixer_fix_truncated_json;
+            settings.response_fixer_fix_truncated_json = update.response_fixer_fix_truncated_json;
             settings.response_fixer_max_json_depth = update.response_fixer_max_json_depth;
             settings.response_fixer_max_fix_size = update.response_fixer_max_fix_size;
             Ok(())
