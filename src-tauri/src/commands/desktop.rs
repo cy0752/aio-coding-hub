@@ -364,22 +364,47 @@ fn path_is_within_root(path: &Path, root: &Path) -> bool {
     path == root || path.starts_with(root)
 }
 
-fn desktop_open_allowed_roots(app: &tauri::AppHandle) -> Result<Vec<PathBuf>, String> {
+fn push_desktop_open_root(roots: &mut Vec<PathBuf>, root: PathBuf) {
+    let root = normalize_existing_path(root);
+    if roots.iter().any(|existing| existing == &root) {
+        return;
+    }
+    roots.push(root);
+}
+
+fn desktop_open_allowed_roots<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> Result<Vec<PathBuf>, String> {
     let home_dir = crate::infra::app_paths::home_dir(app).map_err(|error| error.to_string())?;
     let app_data_dir =
         crate::infra::app_paths::app_data_dir(app).map_err(|error| error.to_string())?;
-    let codex_home_dir = crate::infra::codex_paths::codex_home_dir_follow_env_or_default(app)
+    let user_default_codex_home_dir = crate::infra::codex_paths::codex_home_dir_user_default(app)
         .map_err(|error| error.to_string())?;
+    let follow_codex_home_dir =
+        crate::infra::codex_paths::codex_home_dir_follow_env_or_default(app)
+            .map_err(|error| error.to_string())?;
+    let effective_codex_home_dir =
+        crate::infra::codex_paths::codex_home_dir(app).map_err(|error| error.to_string())?;
+    let configured_codex_home_dir = crate::infra::codex_paths::configured_codex_home_dir(app);
 
-    Ok(vec![
-        normalize_existing_path(app_data_dir),
-        normalize_existing_path(home_dir.join(".claude")),
-        normalize_existing_path(codex_home_dir),
-        normalize_existing_path(home_dir.join(".gemini")),
-    ])
+    let mut roots = Vec::new();
+    push_desktop_open_root(&mut roots, app_data_dir);
+    push_desktop_open_root(&mut roots, home_dir.join(".claude"));
+    push_desktop_open_root(&mut roots, home_dir.join(".gemini"));
+    push_desktop_open_root(&mut roots, user_default_codex_home_dir);
+    push_desktop_open_root(&mut roots, follow_codex_home_dir);
+    push_desktop_open_root(&mut roots, effective_codex_home_dir);
+    if let Some(configured_codex_home_dir) = configured_codex_home_dir {
+        push_desktop_open_root(&mut roots, configured_codex_home_dir);
+    }
+
+    Ok(roots)
 }
 
-fn ensure_desktop_open_path_allowed(app: &tauri::AppHandle, path: &Path) -> Result<(), String> {
+fn ensure_desktop_open_path_allowed<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    path: &Path,
+) -> Result<(), String> {
     let normalized_path = normalize_existing_path(path.to_path_buf());
     let allowed = desktop_open_allowed_roots(app)?;
     if allowed
@@ -676,4 +701,126 @@ pub(crate) async fn desktop_updater_download_and_install(
 
     let _ = app.resources_table().close(rid);
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        desktop_open_allowed_roots, ensure_desktop_open_path_allowed, normalize_existing_path,
+    };
+    use crate::infra::settings::{self, AppSettings, CodexHomeMode};
+    use crate::test_support::{clear_settings_cache, test_env_lock};
+    use std::ffi::OsString;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEST_ENV_SEQ: AtomicU64 = AtomicU64::new(1);
+
+    #[derive(Default)]
+    struct EnvRestore {
+        saved: Vec<(&'static str, Option<OsString>)>,
+    }
+
+    impl EnvRestore {
+        fn save_once(&mut self, key: &'static str) {
+            if self.saved.iter().any(|(saved_key, _)| *saved_key == key) {
+                return;
+            }
+            self.saved.push((key, std::env::var_os(key)));
+        }
+
+        fn set_var(&mut self, key: &'static str, value: impl Into<OsString>) {
+            self.save_once(key);
+            std::env::set_var(key, value.into());
+        }
+
+        fn remove_var(&mut self, key: &'static str) {
+            self.save_once(key);
+            std::env::remove_var(key);
+        }
+    }
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            for (key, value) in self.saved.drain(..).rev() {
+                match value {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+    }
+
+    struct DesktopCommandTestApp {
+        #[allow(dead_code)]
+        env_lock: std::sync::MutexGuard<'static, ()>,
+        #[allow(dead_code)]
+        env_restore: EnvRestore,
+        #[allow(dead_code)]
+        home_dir: tempfile::TempDir,
+        app: tauri::App<tauri::test::MockRuntime>,
+    }
+
+    impl DesktopCommandTestApp {
+        fn new() -> Self {
+            let env_lock = test_env_lock();
+            let home_dir = tempfile::tempdir().expect("tempdir");
+            let seq = TEST_ENV_SEQ.fetch_add(1, Ordering::Relaxed);
+            let mut env_restore = EnvRestore::default();
+            env_restore.set_var(
+                "AIO_CODING_HUB_HOME_DIR",
+                home_dir.path().as_os_str().to_os_string(),
+            );
+            env_restore.set_var(
+                "AIO_CODING_HUB_DOTDIR_NAME",
+                format!(".aio-coding-hub-desktop-test-{seq}"),
+            );
+            env_restore.remove_var("AIO_CODING_HUB_TEST_HOME");
+            clear_settings_cache();
+
+            Self {
+                env_lock,
+                env_restore,
+                home_dir,
+                app: tauri::test::mock_app(),
+            }
+        }
+
+        fn handle(&self) -> tauri::AppHandle<tauri::test::MockRuntime> {
+            self.app.handle().clone()
+        }
+    }
+
+    fn write_custom_codex_home<R: tauri::Runtime>(app: &tauri::AppHandle<R>, custom_home: &Path) {
+        let settings = AppSettings {
+            codex_home_mode: CodexHomeMode::Custom,
+            codex_home_override: custom_home.display().to_string(),
+            ..AppSettings::default()
+        };
+        settings::write(app, &settings).expect("write settings");
+    }
+
+    #[test]
+    fn desktop_open_allowed_roots_include_custom_codex_home() {
+        let test_app = DesktopCommandTestApp::new();
+        let app_handle = test_app.handle();
+        let custom_home = test_app.home_dir.path().join("custom-codex-home");
+        write_custom_codex_home(&app_handle, &custom_home);
+
+        let allowed_roots = desktop_open_allowed_roots(&app_handle).expect("allowed roots");
+
+        assert!(allowed_roots.contains(&normalize_existing_path(custom_home)));
+    }
+
+    #[test]
+    fn desktop_open_path_allows_paths_under_custom_codex_home() {
+        let test_app = DesktopCommandTestApp::new();
+        let app_handle = test_app.handle();
+        let custom_home = test_app.home_dir.path().join("custom-codex-home");
+        write_custom_codex_home(&app_handle, &custom_home);
+
+        let config_path = PathBuf::from(custom_home.join("config.toml"));
+
+        assert!(ensure_desktop_open_path_allowed(&app_handle, &config_path).is_ok());
+    }
 }

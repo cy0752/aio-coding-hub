@@ -220,4 +220,119 @@ describe("hooks/useRequestLogsFeed", () => {
     expect(result.current.requestLogsRefreshing).toBe(false);
     expect(result.current.requestLogsAvailable).toBe(false);
   });
+
+  it("cancels a queued live refresh when the window hides before the debounce fires", async () => {
+    vi.useFakeTimers();
+    const incrementalRefresh = vi.fn().mockResolvedValue(null);
+    let eventHandler: ((payload: { phase: "start" | "complete" }) => void) | null = null;
+    let visible = true;
+
+    vi.mocked(useDocumentVisibility).mockImplementation(() => visible);
+    vi.mocked(useRequestLogsListAllQuery).mockReturnValue({
+      data: [{ id: 1 }],
+      isLoading: false,
+      isFetching: false,
+      refetch: vi.fn(),
+    } as any);
+    vi.mocked(useRequestLogsIncrementalRefreshMutation).mockReturnValue({
+      mutateAsync: incrementalRefresh,
+      isPending: false,
+    } as any);
+    vi.mocked(subscribeGatewayEvent).mockImplementation((event: string, handler: any) => {
+      expect(event).toBe(gatewayEventNames.requestSignal);
+      eventHandler = handler;
+      return {
+        ready: Promise.resolve(),
+        unsubscribe: vi.fn(),
+      };
+    });
+
+    const view = renderHook(() =>
+      useRequestLogsFeed({
+        limit: 10,
+        liveUpdatesEnabled: true,
+        liveUpdateIntervalMs: 400,
+      })
+    );
+
+    act(() => {
+      eventHandler?.({ phase: "complete" });
+    });
+
+    visible = false;
+    view.rerender();
+
+    await act(async () => {
+      vi.advanceTimersByTime(400);
+      await Promise.resolve();
+    });
+
+    expect(incrementalRefresh).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("drops queued follow-up refreshes after the window hides during an in-flight refresh", async () => {
+    vi.useFakeTimers();
+    let resolveRefresh: (() => void) | null = null;
+    const incrementalRefresh = vi.fn().mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveRefresh = resolve;
+        })
+    );
+    let eventHandler: ((payload: { phase: "start" | "complete" }) => void) | null = null;
+    let visible = true;
+
+    vi.mocked(useDocumentVisibility).mockImplementation(() => visible);
+    vi.mocked(useRequestLogsListAllQuery).mockReturnValue({
+      data: [{ id: 1 }],
+      isLoading: false,
+      isFetching: false,
+      refetch: vi.fn(),
+    } as any);
+    vi.mocked(useRequestLogsIncrementalRefreshMutation).mockReturnValue({
+      mutateAsync: incrementalRefresh,
+      isPending: false,
+    } as any);
+    vi.mocked(subscribeGatewayEvent).mockImplementation((event: string, handler: any) => {
+      expect(event).toBe(gatewayEventNames.requestSignal);
+      eventHandler = handler;
+      return {
+        ready: Promise.resolve(),
+        unsubscribe: vi.fn(),
+      };
+    });
+
+    const view = renderHook(() =>
+      useRequestLogsFeed({
+        limit: 10,
+        liveUpdatesEnabled: true,
+        liveUpdateIntervalMs: 400,
+      })
+    );
+
+    await act(async () => {
+      eventHandler?.({ phase: "complete" });
+      vi.advanceTimersByTime(400);
+      await Promise.resolve();
+    });
+
+    expect(incrementalRefresh).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      eventHandler?.({ phase: "complete" });
+      vi.advanceTimersByTime(400);
+    });
+
+    visible = false;
+    view.rerender();
+
+    await act(async () => {
+      resolveRefresh?.();
+      await Promise.resolve();
+    });
+
+    expect(incrementalRefresh).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
 });

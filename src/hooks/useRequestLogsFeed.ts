@@ -39,10 +39,19 @@ export function useRequestLogsFeed({
   const liveRefreshTimerRef = useRef<number | null>(null);
   const liveRefreshQueuedRef = useRef(false);
   const liveRefreshInFlightRef = useRef(false);
+  const liveRefreshEnabledRef = useRef(liveRefreshEnabled);
+
+  const clearQueuedLiveRefresh = useCallback(() => {
+    if (liveRefreshTimerRef.current != null) {
+      window.clearTimeout(liveRefreshTimerRef.current);
+      liveRefreshTimerRef.current = null;
+    }
+    liveRefreshQueuedRef.current = false;
+  }, []);
 
   const flushLiveRefresh = useCallback(() => {
-    if (!enabled || !liveUpdatesEnabled) {
-      liveRefreshQueuedRef.current = false;
+    if (!liveRefreshEnabledRef.current) {
+      clearQueuedLiveRefresh();
       return;
     }
 
@@ -61,13 +70,14 @@ export function useRequestLogsFeed({
       })
       .finally(() => {
         liveRefreshInFlightRef.current = false;
-        if (!liveRefreshQueuedRef.current) {
+        if (!liveRefreshQueuedRef.current || !liveRefreshEnabledRef.current) {
+          liveRefreshQueuedRef.current = false;
           return;
         }
         liveRefreshQueuedRef.current = false;
         flushLiveRefresh();
       });
-  }, [enabled, incrementalRefreshMutation, limit, liveUpdatesEnabled]);
+  }, [clearQueuedLiveRefresh, incrementalRefreshMutation, limit]);
 
   const scheduleLiveRefresh = useCallback(() => {
     if (!liveRefreshEnabled) {
@@ -153,15 +163,18 @@ export function useRequestLogsFeed({
   }, [liveRefreshEnabled, scheduleLiveRefresh]);
 
   useEffect(() => {
+    liveRefreshEnabledRef.current = liveRefreshEnabled;
+    if (!liveRefreshEnabled) {
+      clearQueuedLiveRefresh();
+    }
+  }, [clearQueuedLiveRefresh, liveRefreshEnabled]);
+
+  useEffect(() => {
     return () => {
-      if (liveRefreshTimerRef.current != null) {
-        window.clearTimeout(liveRefreshTimerRef.current);
-        liveRefreshTimerRef.current = null;
-      }
-      liveRefreshQueuedRef.current = false;
+      clearQueuedLiveRefresh();
       liveRefreshInFlightRef.current = false;
     };
-  }, []);
+  }, [clearQueuedLiveRefresh]);
 
   const requestLogs = useMemo(() => requestLogsQuery.data ?? [], [requestLogsQuery.data]);
   const requestLogsLoading = requestLogsQuery.isLoading;
