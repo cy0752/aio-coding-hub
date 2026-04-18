@@ -52,7 +52,8 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             resident::show_main_window(app);
-        }));
+        }))
+        .plugin(tauri_plugin_window_state::Builder::default().build());
 
     let app = builder
         .on_window_event(resident::on_window_event)
