@@ -216,12 +216,16 @@ impl GatewayManager {
 
         // Initialize the global HTTP client with proxy settings from config.
         super::http_client::sync_runtime_context(port, &bind_host, &base_host);
-        let proxy_url = super::http_client::build_effective_proxy_url(
-            Some(cfg.upstream_proxy_url.as_str()),
-            Some(cfg.upstream_proxy_username.as_str()),
-            Some(cfg.upstream_proxy_password.as_str()),
-        )
-        .map_err(|e| format!("{}: {e}", GatewayErrorCode::HttpClientInit.as_str()))?;
+        let proxy_url = if cfg.upstream_proxy_enabled {
+            super::http_client::build_effective_proxy_url(
+                Some(cfg.upstream_proxy_url.as_str()),
+                Some(cfg.upstream_proxy_username.as_str()),
+                Some(cfg.upstream_proxy_password.as_str()),
+            )
+            .map_err(|e| format!("{}: {e}", GatewayErrorCode::HttpClientInit.as_str()))?
+        } else {
+            None
+        };
         super::http_client::init(proxy_url.as_deref())
             .map_err(|e| format!("{}: {e}", GatewayErrorCode::HttpClientInit.as_str()))?;
 
