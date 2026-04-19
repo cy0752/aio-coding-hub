@@ -12,7 +12,7 @@ fn settings_command_update_json(preferred_port: u16) -> serde_json::Value {
     })
 }
 
-fn command_settings<'a>(value: &'a serde_json::Value) -> &'a serde_json::Value {
+fn command_settings(value: &serde_json::Value) -> &serde_json::Value {
     &value["settings"]
 }
 

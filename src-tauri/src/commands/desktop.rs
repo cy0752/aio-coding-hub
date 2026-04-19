@@ -711,7 +711,7 @@ mod tests {
     use crate::infra::settings::{self, AppSettings, CodexHomeMode};
     use crate::test_support::{clear_settings_cache, test_env_lock};
     use std::ffi::OsString;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static TEST_ENV_SEQ: AtomicU64 = AtomicU64::new(1);
@@ -819,7 +819,7 @@ mod tests {
         let custom_home = test_app.home_dir.path().join("custom-codex-home");
         write_custom_codex_home(&app_handle, &custom_home);
 
-        let config_path = PathBuf::from(custom_home.join("config.toml"));
+        let config_path = custom_home.join("config.toml");
 
         assert!(ensure_desktop_open_path_allowed(&app_handle, &config_path).is_ok());
     }
