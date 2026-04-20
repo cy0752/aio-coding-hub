@@ -69,8 +69,6 @@ describe("services/home/homeOverviewTabOrder", () => {
   });
 
   it("writes normalized order to storage and swallows storage errors", () => {
-    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
-
     writeHomeOverviewTabOrderToStorage([
       "sessions",
       "providerLimit",
@@ -78,12 +76,11 @@ describe("services/home/homeOverviewTabOrder", () => {
       "workspaceConfig",
     ]);
 
-    expect(setItemSpy).toHaveBeenCalledWith(
-      HOME_OVERVIEW_TAB_ORDER_STORAGE_KEY,
+    expect(window.localStorage.getItem(HOME_OVERVIEW_TAB_ORDER_STORAGE_KEY)).toBe(
       JSON.stringify(["sessions", "providerLimit", "workspaceConfig", "circuit"])
     );
 
-    setItemSpy.mockImplementation(() => {
+    vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
       throw new Error("blocked");
     });
 

@@ -6,6 +6,38 @@ import { server } from "./msw/server";
 import { resetMswState } from "./msw/state";
 import { resetTauriEventListeners } from "./mocks/tauri";
 
+const localStorageStore = new Map<string, string>();
+const localStorageMock: Storage = {
+  get length() {
+    return localStorageStore.size;
+  },
+  clear() {
+    localStorageStore.clear();
+  },
+  getItem(key: string) {
+    return localStorageStore.get(String(key)) ?? null;
+  },
+  key(index: number) {
+    return Array.from(localStorageStore.keys())[index] ?? null;
+  },
+  removeItem(key: string) {
+    localStorageStore.delete(String(key));
+  },
+  setItem(key: string, value: string) {
+    localStorageStore.set(String(key), String(value));
+  },
+};
+
+Object.defineProperty(window, "localStorage", {
+  configurable: true,
+  value: localStorageMock,
+});
+
+Object.defineProperty(globalThis, "localStorage", {
+  configurable: true,
+  value: localStorageMock,
+});
+
 vi.mock("recharts", async () => {
   const actual = await vi.importActual<typeof import("recharts")>("recharts");
   type Size = { width: number; height: number };
