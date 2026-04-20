@@ -14,7 +14,7 @@ import {
   useSettingsCircuitBreakerNoticeSetMutation,
   useSettingsCodexSessionIdCompletionSetMutation,
   useSettingsGatewayRectifierSetMutation,
-  useSettingsPatchMutation,
+  useSettingsSetMutation,
   useSettingsQuery,
 } from "../../query/settings";
 import {
@@ -151,7 +151,7 @@ vi.mock("../../query/settings", async () => {
     useSettingsGatewayRectifierSetMutation: vi.fn(),
     useSettingsCircuitBreakerNoticeSetMutation: vi.fn(),
     useSettingsCodexSessionIdCompletionSetMutation: vi.fn(),
-    useSettingsPatchMutation: vi.fn(),
+    useSettingsSetMutation: vi.fn(),
   };
 });
 
@@ -274,7 +274,7 @@ describe("pages/CliManagerPage", () => {
     commonMutation.mutateAsync
       .mockResolvedValueOnce(createSettingsMutationResult({ provider_cooldown_seconds: 99 }))
       .mockRejectedValueOnce(new Error("common boom"));
-    vi.mocked(useSettingsPatchMutation).mockReturnValue(commonMutation as any);
+    vi.mocked(useSettingsSetMutation).mockReturnValue(commonMutation as any);
 
     // CLI manager queries are disabled until tab is selected; provide stable placeholders.
     vi.mocked(useCliManagerClaudeInfoQuery).mockReturnValue({
@@ -376,7 +376,7 @@ describe("pages/CliManagerPage", () => {
     vi.mocked(useSettingsCodexSessionIdCompletionSetMutation).mockReturnValue(
       completionMutation as any
     );
-    vi.mocked(useSettingsPatchMutation).mockReturnValue(commonMutation as any);
+    vi.mocked(useSettingsSetMutation).mockReturnValue(commonMutation as any);
 
     vi.mocked(useCliManagerClaudeInfoQuery).mockReturnValue({
       data: null,
@@ -454,7 +454,7 @@ describe("pages/CliManagerPage", () => {
       isPending: false,
       mutateAsync: vi.fn(),
     } as any);
-    vi.mocked(useSettingsPatchMutation).mockReturnValue({
+    vi.mocked(useSettingsSetMutation).mockReturnValue({
       isPending: false,
       mutateAsync: vi.fn(),
     } as any);
@@ -612,7 +612,7 @@ describe("pages/CliManagerPage", () => {
     vi.mocked(useSettingsCodexSessionIdCompletionSetMutation).mockReturnValue(
       completionMutation as any
     );
-    vi.mocked(useSettingsPatchMutation).mockReturnValue(commonMutation as any);
+    vi.mocked(useSettingsSetMutation).mockReturnValue(commonMutation as any);
 
     vi.mocked(useCliManagerClaudeInfoQuery).mockReturnValue({
       data: { config_dir: "/claude", found: true },
@@ -694,7 +694,7 @@ describe("pages/CliManagerPage", () => {
       isPending: false,
       mutateAsync: vi.fn(),
     } as any);
-    vi.mocked(useSettingsPatchMutation).mockReturnValue({
+    vi.mocked(useSettingsSetMutation).mockReturnValue({
       isPending: false,
       mutateAsync: vi.fn(),
     } as any);
@@ -793,7 +793,7 @@ describe("pages/CliManagerPage", () => {
 
     const commonMutation = { isPending: false, mutateAsync: vi.fn() };
     commonMutation.mutateAsync.mockResolvedValueOnce(null);
-    vi.mocked(useSettingsPatchMutation).mockReturnValue(commonMutation as any);
+    vi.mocked(useSettingsSetMutation).mockReturnValue(commonMutation as any);
 
     vi.mocked(useCliManagerClaudeInfoQuery).mockReturnValue({
       data: { config_dir: null, found: true },
@@ -906,7 +906,7 @@ describe("pages/CliManagerPage", () => {
         codex_home_override: "D:\\Work\\CodexHome",
       })
     );
-    vi.mocked(useSettingsPatchMutation).mockReturnValue(commonMutation as any);
+    vi.mocked(useSettingsSetMutation).mockReturnValue(commonMutation as any);
 
     vi.mocked(useCliManagerClaudeInfoQuery).mockReturnValue({
       data: null,
@@ -964,9 +964,9 @@ describe("pages/CliManagerPage", () => {
     await waitFor(() =>
       expect(commonMutation.mutateAsync).toHaveBeenCalledWith(
         expect.objectContaining({
-          codex_home_mode: "custom",
-          codex_home_override: "D:\\Work\\CodexHome",
-          upstream_proxy_password: { mode: "preserve" },
+          codexHomeMode: "custom",
+          codexHomeOverride: "D:\\Work\\CodexHome",
+          upstreamProxyPassword: { mode: "preserve" },
         })
       )
     );
@@ -998,7 +998,7 @@ describe("pages/CliManagerPage", () => {
 
     const commonMutation = { isPending: false, mutateAsync: vi.fn() };
     commonMutation.mutateAsync.mockResolvedValue(null);
-    vi.mocked(useSettingsPatchMutation).mockReturnValue(commonMutation as any);
+    vi.mocked(useSettingsSetMutation).mockReturnValue(commonMutation as any);
 
     vi.mocked(useCliManagerClaudeInfoQuery).mockReturnValue({
       data: null,
