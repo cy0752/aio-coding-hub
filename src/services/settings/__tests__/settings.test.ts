@@ -120,4 +120,42 @@ describe("services/settings/settings", () => {
     });
     expect(input).not.toHaveProperty("cx2ccFallbackModelMain");
   });
+
+  it("prefers generated update keys over cached settings when patching cx2cc fields", async () => {
+    const { createSettingsSetInput } = await import("../settings");
+
+    const input = createSettingsSetInput(createTestAppSettings(), {
+      cx2CcModelReasoningEffort: "high",
+      cx2CcDisableResponseStorage: false,
+    });
+
+    expect(input).toMatchObject({
+      cx2CcModelReasoningEffort: "high",
+      cx2CcDisableResponseStorage: false,
+    });
+  });
+
+  it("applies snake_case cx2cc patch keys when building input from current settings", async () => {
+    const { createSettingsSetInput } = await import("../settings");
+
+    const input = createSettingsSetInput(createTestAppSettings(), {
+      cx2cc_model_reasoning_effort: "xhigh",
+      cx2cc_service_tier: "fast",
+      cx2cc_disable_response_storage: false,
+      cx2cc_enable_reasoning_to_thinking: false,
+      cx2cc_drop_stop_sequences: false,
+      cx2cc_clean_schema: false,
+      cx2cc_filter_batch_tool: false,
+    } as any);
+
+    expect(input).toMatchObject({
+      cx2CcModelReasoningEffort: "xhigh",
+      cx2CcServiceTier: "fast",
+      cx2CcDisableResponseStorage: false,
+      cx2CcEnableReasoningToThinking: false,
+      cx2CcDropStopSequences: false,
+      cx2CcCleanSchema: false,
+      cx2CcFilterBatchTool: false,
+    });
+  });
 });

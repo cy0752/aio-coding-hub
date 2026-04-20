@@ -17,14 +17,18 @@ import { logToConsole } from "../services/consoleLog";
 import { openDesktopSinglePath } from "../services/desktop/dialog";
 import { openDesktopPath } from "../services/desktop/opener";
 import { type GatewayRectifierSettingsPatch } from "../services/settings/settingsGatewayRectifier";
-import type { AppSettings, SensitiveStringUpdate } from "../services/settings/settings";
+import {
+  createSettingsSetInput,
+  type AppSettings,
+  type SensitiveStringUpdate,
+} from "../services/settings/settings";
 import {
   getSettingsReadProtection,
   SETTINGS_READONLY_MESSAGE,
   useSettingsCircuitBreakerNoticeSetMutation,
   useSettingsCodexSessionIdCompletionSetMutation,
   useSettingsGatewayRectifierSetMutation,
-  useSettingsPatchMutation,
+  useSettingsSetMutation,
   useSettingsQuery,
 } from "../query/settings";
 import { useProvidersListQuery } from "../query/providers";
@@ -114,7 +118,7 @@ export function CliManagerPage() {
   const rectifierMutation = useSettingsGatewayRectifierSetMutation();
   const circuitBreakerNoticeMutation = useSettingsCircuitBreakerNoticeSetMutation();
   const codexSessionIdCompletionMutation = useSettingsCodexSessionIdCompletionSetMutation();
-  const commonSettingsMutation = useSettingsPatchMutation();
+  const commonSettingsMutation = useSettingsSetMutation();
 
   const rectifierSaving = rectifierMutation.isPending;
   const circuitBreakerNoticeSaving = circuitBreakerNoticeMutation.isPending;
@@ -375,10 +379,11 @@ export function CliManagerPage() {
 
     const prev = appSettings;
     try {
-      const updated = await commonSettingsMutation.mutateAsync({
+      const payload = createSettingsSetInput(prev, {
         ...patch,
         upstream_proxy_password: patch.upstream_proxy_password ?? { mode: "preserve" },
       });
+      const updated = await commonSettingsMutation.mutateAsync(payload);
 
       if (!updated) {
         return null;
@@ -391,7 +396,9 @@ export function CliManagerPage() {
         updatedSettings.upstream_request_timeout_non_streaming_seconds
       );
       setProviderCooldownSeconds(updatedSettings.provider_cooldown_seconds);
-      setProviderBaseUrlPingCacheTtlSeconds(updatedSettings.provider_base_url_ping_cache_ttl_seconds);
+      setProviderBaseUrlPingCacheTtlSeconds(
+        updatedSettings.provider_base_url_ping_cache_ttl_seconds
+      );
       setCircuitBreakerFailureThreshold(updatedSettings.circuit_breaker_failure_threshold);
       setCircuitBreakerOpenDurationMinutes(updatedSettings.circuit_breaker_open_duration_minutes);
       toast("已保存");
@@ -483,7 +490,6 @@ export function CliManagerPage() {
           codexConfig?.config_dir ||
           undefined,
       });
-
     } catch (err) {
       logToConsole("error", "打开 Codex 目录选择器失败", { error: String(err) });
       toast("打开目录选择器失败：请稍后重试");

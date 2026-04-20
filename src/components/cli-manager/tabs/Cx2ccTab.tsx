@@ -52,6 +52,12 @@ export function CliManagerCx2ccTab({
   const [fallbackModelHaikuText, setFallbackModelHaikuText] = useState("");
   const [fallbackModelMainText, setFallbackModelMainText] = useState("");
   const [serviceTierText, setServiceTierText] = useState("");
+  const [reasoningEffort, setReasoningEffort] = useState("");
+  const [disableResponseStorage, setDisableResponseStorage] = useState(true);
+  const [enableReasoningToThinking, setEnableReasoningToThinking] = useState(true);
+  const [dropStopSequences, setDropStopSequences] = useState(true);
+  const [cleanSchema, setCleanSchema] = useState(true);
+  const [filterBatchTool, setFilterBatchTool] = useState(true);
 
   useEffect(() => {
     if (!appSettings) return;
@@ -60,6 +66,12 @@ export function CliManagerCx2ccTab({
     setFallbackModelHaikuText(appSettings.cx2cc_fallback_model_haiku);
     setFallbackModelMainText(appSettings.cx2cc_fallback_model_main);
     setServiceTierText(appSettings.cx2cc_service_tier);
+    setReasoningEffort(appSettings.cx2cc_model_reasoning_effort);
+    setDisableResponseStorage(appSettings.cx2cc_disable_response_storage);
+    setEnableReasoningToThinking(appSettings.cx2cc_enable_reasoning_to_thinking);
+    setDropStopSequences(appSettings.cx2cc_drop_stop_sequences);
+    setCleanSchema(appSettings.cx2cc_clean_schema);
+    setFilterBatchTool(appSettings.cx2cc_filter_batch_tool);
   }, [appSettings]);
 
   const controlsDisabled = commonSettingsSaving || !appSettings;
@@ -157,8 +169,9 @@ export function CliManagerCx2ccTab({
           >
             <RadioGroup
               name="cx2cc_model_reasoning_effort"
-              value={appSettings?.cx2cc_model_reasoning_effort ?? ""}
+              value={reasoningEffort}
               onChange={(value) => {
+                setReasoningEffort(value);
                 void onPersistCommonSettings({ cx2cc_model_reasoning_effort: value });
               }}
               options={[
@@ -189,8 +202,9 @@ export function CliManagerCx2ccTab({
 
           <SettingItem label="禁用响应存储" subtitle="注入 store: false 到上游请求">
             <Switch
-              checked={appSettings?.cx2cc_disable_response_storage ?? true}
+              checked={disableResponseStorage}
               onCheckedChange={(checked) => {
+                setDisableResponseStorage(checked);
                 void onPersistCommonSettings({ cx2cc_disable_response_storage: checked });
               }}
               disabled={controlsDisabled}
@@ -210,8 +224,9 @@ export function CliManagerCx2ccTab({
             subtitle="将上游 reasoning 输出转换为 Claude thinking 格式"
           >
             <Switch
-              checked={appSettings?.cx2cc_enable_reasoning_to_thinking ?? true}
+              checked={enableReasoningToThinking}
               onCheckedChange={(checked) => {
+                setEnableReasoningToThinking(checked);
                 void onPersistCommonSettings({
                   cx2cc_enable_reasoning_to_thinking: checked,
                 });
@@ -222,8 +237,9 @@ export function CliManagerCx2ccTab({
 
           <SettingItem label="丢弃停止序列" subtitle="丢弃 stop_sequences（Responses API 不支持）">
             <Switch
-              checked={appSettings?.cx2cc_drop_stop_sequences ?? true}
+              checked={dropStopSequences}
               onCheckedChange={(checked) => {
+                setDropStopSequences(checked);
                 void onPersistCommonSettings({ cx2cc_drop_stop_sequences: checked });
               }}
               disabled={controlsDisabled}
@@ -235,8 +251,9 @@ export function CliManagerCx2ccTab({
             subtitle='移除工具 schema 中的 format: "uri"（Responses API 不支持）'
           >
             <Switch
-              checked={appSettings?.cx2cc_clean_schema ?? true}
+              checked={cleanSchema}
               onCheckedChange={(checked) => {
+                setCleanSchema(checked);
                 void onPersistCommonSettings({ cx2cc_clean_schema: checked });
               }}
               disabled={controlsDisabled}
@@ -245,8 +262,9 @@ export function CliManagerCx2ccTab({
 
           <SettingItem label="过滤 BatchTool" subtitle="过滤掉 BatchTool 类型的工具">
             <Switch
-              checked={appSettings?.cx2cc_filter_batch_tool ?? true}
+              checked={filterBatchTool}
               onCheckedChange={(checked) => {
+                setFilterBatchTool(checked);
                 void onPersistCommonSettings({ cx2cc_filter_batch_tool: checked });
               }}
               disabled={controlsDisabled}

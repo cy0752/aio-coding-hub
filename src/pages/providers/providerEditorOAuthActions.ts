@@ -1,4 +1,5 @@
 import { toast } from "sonner";
+import { openDesktopUrl } from "../../services/desktop/opener";
 import { logToConsole } from "../../services/consoleLog";
 import {
   providerOAuthStartDeviceFlow,
@@ -206,6 +207,7 @@ export async function handleOAuthDeviceLogin(ctx: OAuthActionContext) {
     const start = await providerOAuthStartDeviceFlow(targetProviderId);
     ctx.setOauthDeviceFlow(start);
     ctx.setOauthDevicePolling(true);
+    await openDesktopUrl(start.verification_uri);
 
     const deadline = Date.now() + start.expires_in * 1000;
     while (Date.now() < deadline) {
