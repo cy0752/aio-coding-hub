@@ -76,16 +76,27 @@ pub(crate) struct SettingsUpdate {
     pub wsl_custom_host_address: Option<String>,
     pub codex_home_mode: Option<settings::CodexHomeMode>,
     pub codex_home_override: Option<String>,
+    #[serde(rename = "cx2CcFallbackModelOpus")]
     pub cx2cc_fallback_model_opus: Option<String>,
+    #[serde(rename = "cx2CcFallbackModelSonnet")]
     pub cx2cc_fallback_model_sonnet: Option<String>,
+    #[serde(rename = "cx2CcFallbackModelHaiku")]
     pub cx2cc_fallback_model_haiku: Option<String>,
+    #[serde(rename = "cx2CcFallbackModelMain")]
     pub cx2cc_fallback_model_main: Option<String>,
+    #[serde(rename = "cx2CcModelReasoningEffort")]
     pub cx2cc_model_reasoning_effort: Option<String>,
+    #[serde(rename = "cx2CcServiceTier")]
     pub cx2cc_service_tier: Option<String>,
+    #[serde(rename = "cx2CcDisableResponseStorage")]
     pub cx2cc_disable_response_storage: Option<bool>,
+    #[serde(rename = "cx2CcEnableReasoningToThinking")]
     pub cx2cc_enable_reasoning_to_thinking: Option<bool>,
+    #[serde(rename = "cx2CcDropStopSequences")]
     pub cx2cc_drop_stop_sequences: Option<bool>,
+    #[serde(rename = "cx2CcCleanSchema")]
     pub cx2cc_clean_schema: Option<bool>,
+    #[serde(rename = "cx2CcFilterBatchTool")]
     pub cx2cc_filter_batch_tool: Option<bool>,
     pub upstream_proxy_enabled: Option<bool>,
     pub upstream_proxy_url: Option<String>,
@@ -876,6 +887,13 @@ pub(crate) async fn settings_set_impl(
         preferred_port = final_settings.preferred_port,
         auto_start = final_settings.auto_start,
         tray_enabled = final_settings.tray_enabled,
+        cx2cc_model_reasoning_effort = %final_settings.cx2cc_model_reasoning_effort,
+        cx2cc_service_tier = %final_settings.cx2cc_service_tier,
+        cx2cc_disable_response_storage = final_settings.cx2cc_disable_response_storage,
+        cx2cc_enable_reasoning_to_thinking = final_settings.cx2cc_enable_reasoning_to_thinking,
+        cx2cc_drop_stop_sequences = final_settings.cx2cc_drop_stop_sequences,
+        cx2cc_clean_schema = final_settings.cx2cc_clean_schema,
+        cx2cc_filter_batch_tool = final_settings.cx2cc_filter_batch_tool,
         gateway_rebound,
         cli_proxy_synced,
         wsl_auto_sync_triggered,

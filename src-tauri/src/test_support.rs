@@ -505,6 +505,39 @@ pub fn settings_set_via_command_json<R: tauri::Runtime>(
     if let Some(value) = update.upstream_proxy_username {
         next.upstream_proxy_username = value;
     }
+    if let Some(value) = update.cx2cc_fallback_model_opus {
+        next.cx2cc_fallback_model_opus = value;
+    }
+    if let Some(value) = update.cx2cc_fallback_model_sonnet {
+        next.cx2cc_fallback_model_sonnet = value;
+    }
+    if let Some(value) = update.cx2cc_fallback_model_haiku {
+        next.cx2cc_fallback_model_haiku = value;
+    }
+    if let Some(value) = update.cx2cc_fallback_model_main {
+        next.cx2cc_fallback_model_main = value;
+    }
+    if let Some(value) = update.cx2cc_model_reasoning_effort {
+        next.cx2cc_model_reasoning_effort = value;
+    }
+    if let Some(value) = update.cx2cc_service_tier {
+        next.cx2cc_service_tier = value;
+    }
+    if let Some(value) = update.cx2cc_disable_response_storage {
+        next.cx2cc_disable_response_storage = value;
+    }
+    if let Some(value) = update.cx2cc_enable_reasoning_to_thinking {
+        next.cx2cc_enable_reasoning_to_thinking = value;
+    }
+    if let Some(value) = update.cx2cc_drop_stop_sequences {
+        next.cx2cc_drop_stop_sequences = value;
+    }
+    if let Some(value) = update.cx2cc_clean_schema {
+        next.cx2cc_clean_schema = value;
+    }
+    if let Some(value) = update.cx2cc_filter_batch_tool {
+        next.cx2cc_filter_batch_tool = value;
+    }
 
     next.gateway_custom_listen_address = next.gateway_custom_listen_address.trim().to_string();
     next.upstream_proxy_url = next.upstream_proxy_url.trim().to_string();
