@@ -4,6 +4,8 @@ import {
   type DailyResetMode as GeneratedDailyResetMode,
   type ProviderAuthMode as GeneratedProviderAuthMode,
   type ProviderBaseUrlMode as GeneratedProviderBaseUrlMode,
+  type ProviderOAuthDeviceCodePollResult as GeneratedProviderOAuthDeviceCodePollResult,
+  type ProviderOAuthDeviceCodeStartResult as GeneratedProviderOAuthDeviceCodeStartResult,
   type ProviderOAuthDisconnectResult,
   type ProviderOAuthLimitsResult,
   type ProviderOAuthRefreshResult,
@@ -53,6 +55,9 @@ export type DailyResetMode = GeneratedDailyResetMode;
 export type ProviderAuthMode = GeneratedProviderAuthMode;
 export type ProviderBaseUrlMode = GeneratedProviderBaseUrlMode;
 
+export type ProviderOAuthDeviceCodeStartResult = GeneratedProviderOAuthDeviceCodeStartResult;
+export type ProviderOAuthDeviceCodePollResult = GeneratedProviderOAuthDeviceCodePollResult;
+
 export type ProviderSummary = Override<
   GeneratedProviderSummary,
   {
@@ -98,8 +103,7 @@ const providerUpsertFieldMap = {
   streamIdleTimeoutSeconds: "stream_idle_timeout_seconds",
 } as const satisfies Record<keyof GeneratedProviderUpsertInput, string>;
 
-type ProviderUpsertTransportInput =
-  OptionalNullableGeneratedFields<GeneratedProviderUpsertInput>;
+type ProviderUpsertTransportInput = OptionalNullableGeneratedFields<GeneratedProviderUpsertInput>;
 
 export type ProviderUpsertInput = Override<
   RemapGeneratedKeys<ProviderUpsertTransportInput, typeof providerUpsertFieldMap>,
@@ -193,8 +197,7 @@ export async function providerDelete(providerId: number) {
     title: "删除供应商失败",
     cmd: "provider_delete",
     args: { providerId },
-    invoke: () =>
-      commands.providerDelete(providerId) as Promise<GeneratedCommandResult<boolean>>,
+    invoke: () => commands.providerDelete(providerId) as Promise<GeneratedCommandResult<boolean>>,
   });
 }
 
@@ -229,7 +232,9 @@ export async function providerCopyApiKeyToClipboard(providerId: number) {
     cmd: "provider_copy_api_key_to_clipboard",
     args: { providerId },
     invoke: () =>
-      commands.providerCopyApiKeyToClipboard(providerId) as Promise<GeneratedCommandResult<boolean>>,
+      commands.providerCopyApiKeyToClipboard(providerId) as Promise<
+        GeneratedCommandResult<boolean>
+      >,
   });
 }
 
@@ -260,7 +265,39 @@ export async function providerOAuthStartFlow(
   });
 }
 
-export async function providerOAuthRefresh(providerId: number): Promise<ProviderOAuthRefreshResult> {
+export async function providerOAuthStartDeviceFlow(
+  providerId: number
+): Promise<ProviderOAuthDeviceCodeStartResult> {
+  return invokeGeneratedIpc<ProviderOAuthDeviceCodeStartResult>({
+    title: "启动设备码登录失败",
+    cmd: "provider_oauth_start_device_flow",
+    args: { providerId },
+    invoke: () =>
+      commands.providerOauthStartDeviceFlow(providerId) as Promise<
+        GeneratedCommandResult<ProviderOAuthDeviceCodeStartResult>
+      >,
+  });
+}
+
+export async function providerOAuthPollDeviceFlow(
+  providerId: number,
+  deviceCode: string,
+  userCode: string
+): Promise<ProviderOAuthDeviceCodePollResult> {
+  return invokeGeneratedIpc<ProviderOAuthDeviceCodePollResult>({
+    title: "轮询设备码登录失败",
+    cmd: "provider_oauth_poll_device_flow",
+    args: { providerId, deviceCode, userCode },
+    invoke: () =>
+      commands.providerOauthPollDeviceFlow(providerId, deviceCode, userCode) as Promise<
+        GeneratedCommandResult<ProviderOAuthDeviceCodePollResult>
+      >,
+  });
+}
+
+export async function providerOAuthRefresh(
+  providerId: number
+): Promise<ProviderOAuthRefreshResult> {
   return invokeGeneratedIpc<ProviderOAuthRefreshResult>({
     title: "刷新 OAuth 登录失败",
     cmd: "provider_oauth_refresh",

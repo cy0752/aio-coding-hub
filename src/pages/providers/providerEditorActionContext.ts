@@ -1,6 +1,7 @@
 import type {
   ClaudeModels,
   CliKey,
+  ProviderOAuthDeviceCodeStartResult,
   ProviderOAuthStatusResult,
   ProviderUpsertInput,
   ProviderSummary,
@@ -30,6 +31,12 @@ export type AuthActionContext = {
   refreshOauthStatus: (providerId?: number | null) => Promise<OAuthStatusValue>;
   oauthLoading: boolean;
   setOauthLoading: (v: boolean) => void;
+  oauthDeviceFlow: ProviderOAuthDeviceCodeStartResult | null;
+  setOauthDeviceFlow: (v: ProviderOAuthDeviceCodeStartResult | null) => void;
+  oauthDevicePolling: boolean;
+  setOauthDevicePolling: (v: boolean) => void;
+  oauthDeviceError: string | null;
+  setOauthDeviceError: (v: string | null) => void;
   cx2ccSourceValue: string;
   isCodexGatewaySource: boolean;
   sourceProviderId: number | null;
@@ -92,7 +99,10 @@ export type ProviderEditorPayloadBuildSuccess = {
 };
 
 export type CopyApiKeyActionContext = ProviderActionContext &
-  Pick<FormActionContext, "copyingApiKey" | "setCopyingApiKey" | "apiKeyConfigured" | "apiKeyValue">;
+  Pick<
+    FormActionContext,
+    "copyingApiKey" | "setCopyingApiKey" | "apiKeyConfigured" | "apiKeyValue"
+  >;
 
 export type SaveActionContext = ProviderActionContext &
   ProviderEditorPayloadContext &
@@ -104,7 +114,19 @@ export type SaveActionContext = ProviderActionContext &
 export type OAuthActionContext = ProviderActionContext &
   ProviderEditorPayloadContext &
   Pick<FormActionContext, "form"> &
-  Pick<AuthActionContext, "oauthStatus" | "setOauthStatus" | "refreshOauthStatus" | "setOauthLoading"> & {
+  Pick<
+    AuthActionContext,
+    | "oauthStatus"
+    | "setOauthStatus"
+    | "refreshOauthStatus"
+    | "setOauthLoading"
+    | "oauthDeviceFlow"
+    | "setOauthDeviceFlow"
+    | "oauthDevicePolling"
+    | "setOauthDevicePolling"
+    | "oauthDeviceError"
+    | "setOauthDeviceError"
+  > & {
     persistProvider: (input: ProviderUpsertInput) => Promise<ProviderSummary | null>;
     removeProvider: (providerId: number) => Promise<boolean>;
   };
