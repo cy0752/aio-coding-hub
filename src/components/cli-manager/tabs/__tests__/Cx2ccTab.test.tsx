@@ -230,6 +230,22 @@ describe("components/cli-manager/tabs/Cx2ccTab", () => {
     });
   });
 
+  it("updates reasoning effort selection immediately after click", () => {
+    const persistSettings = vi.fn().mockResolvedValue(null);
+    render(
+      <CliManagerCx2ccTab
+        appSettings={createAppSettings({ cx2cc_model_reasoning_effort: "medium" })}
+        commonSettingsSaving={false}
+        onPersistCommonSettings={persistSettings}
+      />
+    );
+
+    const xhighRadio = screen.getByRole("radio", { name: "xhigh" });
+    fireEvent.click(xhighRadio);
+
+    expect(xhighRadio).toBeChecked();
+  });
+
   it("persists disable response storage switch change", () => {
     const persistSettings = vi.fn().mockResolvedValue(null);
     render(
