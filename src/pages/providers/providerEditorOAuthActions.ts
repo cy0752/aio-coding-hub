@@ -1,6 +1,9 @@
 import { toast } from "sonner";
+import { openDesktopUrl } from "../../services/desktop/opener";
 import { logToConsole } from "../../services/consoleLog";
 import {
+  providerOAuthStartDeviceFlow,
+  providerOAuthPollDeviceFlow,
   providerOAuthStartFlow,
   providerOAuthRefresh,
   providerOAuthDisconnect,
@@ -116,19 +119,15 @@ export async function handleOAuthLogin(ctx: OAuthActionContext) {
       }
 
       toast("OAuth 登录成功");
-      logToConsole(
-        "info",
-        `OAuth 登录成功：${ctx.form.getValues().name || "OAuth Provider"}`,
-        {
-          cli_key: ctx.cliKey,
-          provider_id: targetProviderId,
-          provider_type: result.provider_type,
-          email: status?.email,
-          expires_at: result.expires_at,
-          limit_5h: limits?.limit_5h_text,
-          limit_weekly: limits?.limit_weekly_text,
-        }
-      );
+      logToConsole("info", `OAuth 登录成功：${ctx.form.getValues().name || "OAuth Provider"}`, {
+        cli_key: ctx.cliKey,
+        provider_id: targetProviderId,
+        provider_type: result.provider_type,
+        email: status?.email,
+        expires_at: result.expires_at,
+        limit_5h: limits?.limit_5h_text,
+        limit_weekly: limits?.limit_weekly_text,
+      });
       if (!ctx.editingProviderId) {
         ctx.onSaved(ctx.cliKey);
         ctx.onOpenChange(false);
@@ -136,20 +135,132 @@ export async function handleOAuthLogin(ctx: OAuthActionContext) {
     } else {
       await rollbackAutoSavedProvider();
       toast("OAuth 登录失败");
-      logToConsole(
-        "warn",
-        `OAuth 登录失败：${ctx.form.getValues().name || "OAuth Provider"}`,
-        { cli_key: ctx.cliKey, provider_id: targetProviderId }
-      );
+      logToConsole("warn", `OAuth 登录失败：${ctx.form.getValues().name || "OAuth Provider"}`, {
+        cli_key: ctx.cliKey,
+        provider_id: targetProviderId,
+      });
     }
   } catch (err) {
     await rollbackAutoSavedProvider();
     toast(`OAuth 登录失败：${String(err)}`);
-    logToConsole(
-      "error",
-      `OAuth 登录异常：${ctx.form.getValues().name || "OAuth Provider"}`,
-      { cli_key: ctx.cliKey, error: String(err) }
-    );
+    logToConsole("error", `OAuth 登录异常：${ctx.form.getValues().name || "OAuth Provider"}`, {
+      cli_key: ctx.cliKey,
+      error: String(err),
+    });
+  } finally {
+    ctx.setOauthLoading(false);
+  }
+}
+
+export async function handleOAuthDeviceLogin(ctx: OAuthActionContext) {
+  ctx.setOauthLoading(true);
+  ctx.setOauthDeviceError(null);
+  ctx.setOauthDeviceFlow(null);
+  ctx.setOauthDevicePolling(false);
+  let autoSavedProviderId: number | null = null;
+  let shouldRollbackAutoSavedProvider = false;
+
+  const rollbackAutoSavedProvider = async () => {
+    if (!shouldRollbackAutoSavedProvider || !autoSavedProviderId) return;
+    try {
+      await ctx.removeProvider(autoSavedProviderId);
+    } catch (cleanupErr) {
+      logToConsole(
+        "error",
+        `设备码登录失败后清理临时 Provider 异常：${ctx.form.getValues().name || "OAuth Provider"}`,
+        {
+          cli_key: ctx.cliKey,
+          provider_id: autoSavedProviderId,
+          error: String(cleanupErr),
+        }
+      );
+    }
+  };
+
+  try {
+    let targetProviderId = ctx.editingProviderId;
+    if (!targetProviderId) {
+      if (!ctx.form.getValues().name?.trim()) {
+        toast("请先填写 Provider 名称");
+        return;
+      }
+
+      const built = buildProviderEditorUpsertInput({
+        ...ctx,
+        formValues: ctx.form.getValues(),
+      });
+      if (!built.ok) {
+        presentProviderEditorPayloadBuildError(ctx.mode, built.error);
+        return;
+      }
+
+      const saved = await ctx.persistProvider(built.value.payload);
+      if (!saved) {
+        toast("自动保存 Provider 失败");
+        return;
+      }
+      targetProviderId = saved.id;
+      autoSavedProviderId = saved.id;
+      shouldRollbackAutoSavedProvider = true;
+    }
+
+    const start = await providerOAuthStartDeviceFlow(targetProviderId);
+    ctx.setOauthDeviceFlow(start);
+    ctx.setOauthDevicePolling(true);
+    await openDesktopUrl(start.verification_uri);
+
+    const deadline = Date.now() + start.expires_in * 1000;
+    while (Date.now() < deadline) {
+      const result = await providerOAuthPollDeviceFlow(
+        targetProviderId,
+        start.device_code,
+        start.user_code
+      );
+      if (result.completed) {
+        shouldRollbackAutoSavedProvider = false;
+        ctx.setOauthDevicePolling(false);
+        ctx.setOauthDeviceFlow(null);
+        ctx.setOauthDeviceError(null);
+
+        const status = await ctx.refreshOauthStatus(targetProviderId);
+        ctx.setOauthStatus(status);
+        try {
+          await providerOAuthFetchLimits(targetProviderId);
+        } catch (err) {
+          logToConsole(
+            "warn",
+            `设备码登录后获取用量异常：${ctx.form.getValues().name || "OAuth Provider"}`,
+            {
+              cli_key: ctx.cliKey,
+              provider_id: targetProviderId,
+              error: String(err),
+            }
+          );
+        }
+
+        toast("设备码登录成功");
+        if (!ctx.editingProviderId) {
+          ctx.onSaved(ctx.cliKey);
+          ctx.onOpenChange(false);
+        }
+        return;
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, start.interval * 1000));
+    }
+
+    ctx.setOauthDevicePolling(false);
+    ctx.setOauthDeviceError("设备码已过期，请重新开始登录。");
+    await rollbackAutoSavedProvider();
+    toast("设备码登录失败：设备码已过期");
+  } catch (err) {
+    ctx.setOauthDevicePolling(false);
+    ctx.setOauthDeviceError(String(err));
+    await rollbackAutoSavedProvider();
+    toast(`设备码登录失败：${String(err)}`);
+    logToConsole("error", `设备码登录异常：${ctx.form.getValues().name || "OAuth Provider"}`, {
+      cli_key: ctx.cliKey,
+      error: String(err),
+    });
   } finally {
     ctx.setOauthLoading(false);
   }

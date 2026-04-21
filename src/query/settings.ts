@@ -90,7 +90,8 @@ export function useSettingsPatchMutation() {
       if (!current) {
         throw new Error("SETTINGS_NOT_READY: settings query cache is empty");
       }
-      return settingsSet(createSettingsSetInput(current, patch));
+      const input = createSettingsSetInput(current, patch);
+      return settingsSet(input);
     },
     onSuccess: (result) => syncSettingsMutationCaches(queryClient, result),
     onSettled: () => {

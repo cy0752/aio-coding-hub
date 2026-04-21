@@ -531,6 +531,38 @@ export const commands = {
       else return { status: "error", error: e as any };
     }
   },
+  async providerOauthStartDeviceFlow(
+    providerId: number
+  ): Promise<Result<ProviderOAuthDeviceCodeStartResult, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("provider_oauth_start_device_flow", { providerId }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async providerOauthPollDeviceFlow(
+    providerId: number,
+    deviceCode: string,
+    userCode: string
+  ): Promise<Result<ProviderOAuthDeviceCodePollResult, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("provider_oauth_poll_device_flow", {
+          providerId,
+          deviceCode,
+          userCode,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
   async providerOauthRefresh(
     providerId: number
   ): Promise<Result<ProviderOAuthRefreshResult, string>> {
@@ -2297,6 +2329,21 @@ export type ProviderLimitUsageRow = {
   window_daily_start_ts: number;
   window_weekly_start_ts: number;
   window_monthly_start_ts: number;
+};
+export type ProviderOAuthDeviceCodePollResult = {
+  completed: boolean;
+  provider_id: number;
+  provider_type: string;
+  expires_at: number | null;
+};
+export type ProviderOAuthDeviceCodeStartResult = {
+  provider_id: number;
+  provider_type: string;
+  device_code: string;
+  user_code: string;
+  verification_uri: string;
+  expires_in: number;
+  interval: number;
 };
 export type ProviderOAuthDisconnectResult = { success: boolean };
 export type ProviderOAuthLimitsResult = {

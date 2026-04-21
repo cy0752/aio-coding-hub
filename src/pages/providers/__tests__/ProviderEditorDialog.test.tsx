@@ -6,9 +6,12 @@ import { toast } from "sonner";
 import { ProviderEditorDialog } from "../ProviderEditorDialog";
 import { copyText } from "../../../services/clipboard";
 import { logToConsole } from "../../../services/consoleLog";
+import { openDesktopUrl } from "../../../services/desktop/opener";
 import {
   providerCopyApiKeyToClipboard,
   providerDelete,
+  providerOAuthPollDeviceFlow,
+  providerOAuthStartDeviceFlow,
   providerOAuthDisconnect,
   providerOAuthFetchLimits,
   providerOAuthRefresh,
@@ -26,6 +29,7 @@ import type { ProviderEditorInitialValues } from "../providerDuplicate";
 vi.mock("sonner", () => ({ toast: vi.fn() }));
 vi.mock("../../../services/consoleLog", () => ({ logToConsole: vi.fn() }));
 vi.mock("../../../services/clipboard", () => ({ copyText: vi.fn() }));
+vi.mock("../../../services/desktop/opener", () => ({ openDesktopUrl: vi.fn() }));
 
 vi.mock("../../../services/providers/providers", async () => {
   const actual = await vi.importActual<typeof import("../../../services/providers/providers")>(
@@ -38,6 +42,8 @@ vi.mock("../../../services/providers/providers", async () => {
     baseUrlPingMs: vi.fn(),
     providerCopyApiKeyToClipboard: vi.fn(),
     providerOAuthStartFlow: vi.fn(),
+    providerOAuthStartDeviceFlow: vi.fn(),
+    providerOAuthPollDeviceFlow: vi.fn(),
     providerOAuthRefresh: vi.fn(),
     providerOAuthDisconnect: vi.fn(),
     providerOAuthStatus: vi.fn(),
@@ -153,6 +159,47 @@ function renderDialog(ui: ReactElement) {
 const render = renderDialog;
 
 describe("pages/providers/ProviderEditorDialog", () => {
+  it("opens browser when starting Codex device code login", async () => {
+    vi.mocked(providerUpsert).mockResolvedValueOnce({
+      id: 299,
+      cli_key: "codex",
+      name: "Codex Device OAuth",
+    } as any);
+    vi.mocked(providerOAuthStartDeviceFlow).mockResolvedValueOnce({
+      provider_id: 299,
+      provider_type: "codex_oauth",
+      device_code: "device_123",
+      user_code: "ABCD-EFGH",
+      verification_uri: "https://auth.openai.com/codex/device",
+      expires_in: 900,
+      interval: 60,
+    });
+    vi.mocked(openDesktopUrl).mockResolvedValueOnce(true);
+
+    render(
+      <ProviderEditorDialog
+        mode="create"
+        open={true}
+        cliKey="codex"
+        onSaved={vi.fn()}
+        onOpenChange={vi.fn()}
+      />
+    );
+
+    const dialog = within(screen.getByRole("dialog"));
+    fireEvent.click(dialog.getByRole("tab", { name: "OAuth 登录" }));
+    fireEvent.change(dialog.getByPlaceholderText("default"), {
+      target: { value: "Codex Device OAuth" },
+    });
+
+    fireEvent.click(dialog.getByRole("button", { name: "设备码登录" }));
+
+    await waitFor(() => expect(vi.mocked(providerOAuthStartDeviceFlow)).toHaveBeenCalledWith(299));
+    await waitFor(() =>
+      expect(vi.mocked(openDesktopUrl)).toHaveBeenCalledWith("https://auth.openai.com/codex/device")
+    );
+  });
+
   it("validates create form and saves provider", async () => {
     vi.mocked(providerUpsert).mockResolvedValue({
       id: 1,
@@ -602,9 +649,7 @@ describe("pages/providers/ProviderEditorDialog", () => {
 
     fireEvent.click(dialog.getByRole("button", { name: "保存" }));
 
-    await waitFor(() =>
-      expect(vi.mocked(toast)).toHaveBeenCalledWith("请选择源 Codex 来源")
-    );
+    await waitFor(() => expect(vi.mocked(toast)).toHaveBeenCalledWith("请选择源 Codex 来源"));
     expect(vi.mocked(providerUpsert)).not.toHaveBeenCalled();
   });
 
@@ -1107,6 +1152,126 @@ describe("pages/providers/ProviderEditorDialog", () => {
     fireEvent.click(dialog.getByRole("button", { name: "保存" }));
 
     await waitFor(() => expect(vi.mocked(toast)).toHaveBeenCalledWith("请先完成 OAuth 登录"));
+  });
+
+  it("shows the device code while waiting for Codex device authorization", async () => {
+    vi.mocked(providerUpsert).mockResolvedValueOnce({
+      id: 300,
+      cli_key: "codex",
+      name: "Codex Device OAuth",
+    } as any);
+    vi.mocked(providerOAuthStartDeviceFlow).mockResolvedValueOnce({
+      provider_id: 300,
+      provider_type: "codex_oauth",
+      device_code: "device_waiting",
+      user_code: "WXYZ-1234",
+      verification_uri: "https://auth.openai.com/codex/device",
+      expires_in: 900,
+      interval: 60,
+    });
+    vi.mocked(providerOAuthPollDeviceFlow).mockResolvedValueOnce({
+      completed: false,
+      provider_id: 300,
+      provider_type: "codex_oauth",
+      expires_at: null,
+    });
+
+    render(
+      <ProviderEditorDialog
+        mode="create"
+        open={true}
+        cliKey="codex"
+        onSaved={vi.fn()}
+        onOpenChange={vi.fn()}
+      />
+    );
+
+    const dialog = within(screen.getByRole("dialog"));
+    fireEvent.click(dialog.getByText("OAuth 登录"));
+    fireEvent.change(dialog.getByPlaceholderText("default"), {
+      target: { value: "Codex Device OAuth" },
+    });
+
+    fireEvent.click(dialog.getByRole("button", { name: "设备码登录" }));
+
+    await waitFor(() => expect(dialog.getByText("验证码：")).toBeInTheDocument());
+    expect(dialog.getByText("WXYZ-1234")).toBeInTheDocument();
+    expect(dialog.getByText("等待授权中…")).toBeInTheDocument();
+  });
+
+  it("supports Codex device code login in create mode", async () => {
+    vi.mocked(providerUpsert).mockResolvedValueOnce({
+      id: 299,
+      cli_key: "codex",
+      name: "Codex Device OAuth",
+    } as any);
+    vi.mocked(providerOAuthStartDeviceFlow).mockResolvedValueOnce({
+      provider_id: 299,
+      provider_type: "codex_oauth",
+      device_code: "device_123",
+      user_code: "ABCD-EFGH",
+      verification_uri: "https://auth.openai.com/codex/device",
+      expires_in: 900,
+      interval: 0,
+    });
+    vi.mocked(providerOAuthPollDeviceFlow).mockResolvedValueOnce({
+      completed: true,
+      provider_id: 299,
+      provider_type: "codex_oauth",
+      expires_at: 1700000000,
+    });
+    vi.mocked(providerOAuthStatus).mockResolvedValueOnce(
+      makeOAuthStatus({
+        connected: true,
+        provider_type: "codex_oauth",
+        email: "codex@example.com",
+        expires_at: 1700000000,
+        has_refresh_token: true,
+      })
+    );
+    vi.mocked(providerOAuthFetchLimits).mockResolvedValueOnce({
+      limit_short_label: null,
+      limit_5h_text: "100 req",
+      limit_weekly_text: "1000 req",
+      limit_5h_reset_at: null,
+      limit_weekly_reset_at: null,
+    });
+
+    const onSaved = vi.fn();
+    const onOpenChange = vi.fn();
+
+    render(
+      <ProviderEditorDialog
+        mode="create"
+        open={true}
+        cliKey="codex"
+        onSaved={onSaved}
+        onOpenChange={onOpenChange}
+      />
+    );
+
+    const dialog = within(screen.getByRole("dialog"));
+    fireEvent.click(dialog.getByText("OAuth 登录"));
+    fireEvent.change(dialog.getByPlaceholderText("default"), {
+      target: { value: "Codex Device OAuth" },
+    });
+
+    fireEvent.click(dialog.getByRole("button", { name: "设备码登录" }));
+
+    await waitFor(() => expect(vi.mocked(providerOAuthStartDeviceFlow)).toHaveBeenCalledWith(299));
+    await waitFor(() =>
+      expect(vi.mocked(openDesktopUrl)).toHaveBeenCalledWith("https://auth.openai.com/codex/device")
+    );
+    await waitFor(() =>
+      expect(vi.mocked(providerOAuthPollDeviceFlow)).toHaveBeenCalledWith(
+        299,
+        "device_123",
+        "ABCD-EFGH"
+      )
+    );
+    await waitFor(() => expect(vi.mocked(toast)).toHaveBeenCalledWith("设备码登录成功"));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith("codex"));
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
   });
 
   it("shows OAuth mode for Gemini and reuses the same create-time login flow", async () => {
