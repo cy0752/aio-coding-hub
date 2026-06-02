@@ -5,6 +5,8 @@ import {
   type ProviderAuthMode as GeneratedProviderAuthMode,
   type ProviderAvailabilityResult,
   type ProviderBaseUrlMode as GeneratedProviderBaseUrlMode,
+  type ProviderOAuthDeviceCodePollResult as GeneratedProviderOAuthDeviceCodePollResult,
+  type ProviderOAuthDeviceCodeStartResult as GeneratedProviderOAuthDeviceCodeStartResult,
   type ProviderOAuthDisconnectResult,
   type ProviderOAuthLimitsResult,
   type ProviderOAuthRefreshResult,
@@ -28,6 +30,8 @@ import { createRiskyIpcConfirm } from "../ipcConfirm";
 
 export type {
   ProviderAvailabilityResult,
+  GeneratedProviderOAuthDeviceCodePollResult as ProviderOAuthDeviceCodePollResult,
+  GeneratedProviderOAuthDeviceCodeStartResult as ProviderOAuthDeviceCodeStartResult,
   ProviderOAuthDisconnectResult,
   ProviderOAuthLimitsResult,
   ProviderOAuthRefreshResult,
@@ -349,6 +353,40 @@ export async function providerOAuthStartFlow(
     invoke: () =>
       commands.providerOauthStartFlow(normalizedCliKey, normalizedProviderId) as Promise<
         GeneratedCommandResult<ProviderOAuthStartFlowResult>
+      >,
+  });
+}
+
+export async function providerOAuthStartDeviceFlow(
+  providerId: number
+): Promise<GeneratedProviderOAuthDeviceCodeStartResult> {
+  const normalizedProviderId = validateProviderId(providerId);
+
+  return invokeGeneratedIpc<GeneratedProviderOAuthDeviceCodeStartResult>({
+    title: "启动设备码登录失败",
+    cmd: "provider_oauth_start_device_flow",
+    args: { providerId: normalizedProviderId },
+    invoke: () =>
+      commands.providerOauthStartDeviceFlow(normalizedProviderId) as Promise<
+        GeneratedCommandResult<GeneratedProviderOAuthDeviceCodeStartResult>
+      >,
+  });
+}
+
+export async function providerOAuthPollDeviceFlow(
+  providerId: number,
+  deviceCode: string,
+  userCode: string
+): Promise<GeneratedProviderOAuthDeviceCodePollResult> {
+  const normalizedProviderId = validateProviderId(providerId);
+
+  return invokeGeneratedIpc<GeneratedProviderOAuthDeviceCodePollResult>({
+    title: "轮询设备码登录失败",
+    cmd: "provider_oauth_poll_device_flow",
+    args: { providerId: normalizedProviderId, deviceCode, userCode },
+    invoke: () =>
+      commands.providerOauthPollDeviceFlow(normalizedProviderId, deviceCode, userCode) as Promise<
+        GeneratedCommandResult<GeneratedProviderOAuthDeviceCodePollResult>
       >,
   });
 }

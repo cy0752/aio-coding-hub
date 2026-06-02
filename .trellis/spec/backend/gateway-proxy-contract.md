@@ -187,6 +187,77 @@ OAuth client classification contract:
   rules stay consistent across login, proactive refresh, limits fetch, and
   reactive 401 refresh.
 
+### Scenario: Codex Device Code OAuth Login
+
+#### 1. Scope / Trigger
+
+- Trigger: adding a provider OAuth login path that crosses Rust Tauri commands,
+  generated TypeScript bindings, frontend service wrappers, provider editor UI,
+  and token persistence.
+- Scope: `cli_key=codex` providers only. Browser callback OAuth remains a
+  separate login path.
+
+#### 2. Signatures
+
+- Start command:
+  `provider_oauth_start_device_flow(provider_id: i64) -> ProviderOAuthDeviceCodeStartResult`.
+- Poll command:
+  `provider_oauth_poll_device_flow(provider_id: i64, device_code: String, user_code: String) -> ProviderOAuthDeviceCodePollResult`.
+- Frontend wrappers:
+  `providerOAuthStartDeviceFlow(providerId)` and
+  `providerOAuthPollDeviceFlow(providerId, deviceCode, userCode)`.
+
+#### 3. Contracts
+
+- Start response fields:
+  `provider_id`, `provider_type`, `device_code`, `user_code`,
+  `verification_uri`, `expires_in`, `interval`.
+- Poll response fields:
+  `completed`, `provider_id`, `provider_type`, `expires_at`.
+- The frontend may display `user_code` and `verification_uri`; it must not
+  receive access tokens, refresh tokens, or id tokens.
+- Successful poll exchanges the device authorization code for OAuth tokens,
+  resolves the effective token through the Codex OAuth adapter, persists tokens
+  through `update_oauth_tokens`, clears provider OAuth limit snapshots, and
+  emits an audit log.
+
+#### 4. Validation & Error Matrix
+
+- Provider missing -> `DB_NOT_FOUND` from the provider lookup.
+- Provider `cli_key != "codex"` -> `SEC_INVALID_INPUT`.
+- Device user-code request non-success -> actionable `device code request failed`.
+- Poll status `403 Forbidden` or `404 Not Found` -> return
+  `completed=false`; the UI keeps polling until expiry.
+- Poll status `410 Gone` -> return an expiry error and stop polling.
+- Token exchange non-success -> actionable `device token exchange failed`.
+
+#### 5. Good/Base/Bad Cases
+
+- Good: Codex provider starts device flow, browser opens
+  `https://auth.openai.com/codex/device`, poll succeeds, tokens persist, and
+  the frontend refreshes OAuth status.
+- Base: normal OAuth callback login remains available next to device login.
+- Bad: exposing device login for Gemini/Claude, or returning OAuth tokens to
+  the renderer because the UI only needs success metadata.
+
+#### 6. Tests Required
+
+- Generated bindings include both new commands and result DTOs.
+- Service contract test proves DTOs are imported from generated bindings.
+- Provider editor test proves Codex shows device login and non-Codex providers
+  do not.
+- Device login success test asserts start, browser open, poll, status refresh,
+  and close-on-create behavior.
+
+#### 7. Wrong vs Correct
+
+Wrong: add a frontend button that calls a raw `invoke("provider_oauth_poll_device_flow")`
+with handwritten response types.
+
+Correct: register the Rust commands in `src-tauri/src/commands/registry.rs`,
+regenerate `src/generated/bindings.ts`, and call them through
+`src/services/providers/providers.ts`.
+
 ### 2) Hop-by-Hop Headers
 
 Hop-by-hop/proxy headers are stripped before forwarding (HTTP correctness):

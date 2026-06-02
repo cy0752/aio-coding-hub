@@ -1,7 +1,11 @@
 import { useCallback, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import type { ClaudeModels, ProviderSummary } from "../../services/providers/providers";
+import type {
+  ClaudeModels,
+  ProviderOAuthDeviceCodeStartResult,
+  ProviderSummary,
+} from "../../services/providers/providers";
 import type { ProviderEditorDialogFormInput } from "../../schemas/providerEditorDialog";
 import type { BaseUrlRow, ProviderBaseUrlMode } from "./types";
 import type { ProviderEditorDialogProps } from "./ProviderEditorDialog";
@@ -30,6 +34,7 @@ import {
 import { copyApiKey as copyApiKeyAction } from "./useProviderEditorActions";
 import {
   handleOAuthLogin as oauthLoginAction,
+  handleOAuthDeviceLogin as oauthDeviceLoginAction,
   handleOAuthRefresh as oauthRefreshAction,
   handleOAuthDisconnect as oauthDisconnectAction,
 } from "./providerEditorOAuthActions";
@@ -70,6 +75,11 @@ export function useProviderEditorForm(props: ProviderEditorDialogProps) {
   );
   const [oauthStatus, setOauthStatus] = useState<OAuthStatusValue>(null);
   const [oauthLoading, setOauthLoading] = useState(false);
+  const [oauthDeviceFlow, setOauthDeviceFlow] = useState<ProviderOAuthDeviceCodeStartResult | null>(
+    null
+  );
+  const [oauthDevicePolling, setOauthDevicePolling] = useState(false);
+  const [oauthDeviceError, setOauthDeviceError] = useState<string | null>(null);
   const [cx2ccFallbackModels, setCx2ccFallbackModels] = useState<{
     main: string;
     haiku: string;
@@ -285,6 +295,12 @@ export function useProviderEditorForm(props: ProviderEditorDialogProps) {
       setOauthStatus,
       refreshOauthStatus,
       setOauthLoading,
+      oauthDeviceFlow,
+      setOauthDeviceFlow,
+      oauthDevicePolling,
+      setOauthDevicePolling,
+      oauthDeviceError,
+      setOauthDeviceError,
       persistProvider: (input) => providerUpsertMutation.mutateAsync({ input }),
       removeProvider: (providerId) => providerDeleteMutation.mutateAsync({ cliKey, providerId }),
     }),
@@ -298,6 +314,9 @@ export function useProviderEditorForm(props: ProviderEditorDialogProps) {
       form.getValues,
       form.setValue,
       oauthStatus,
+      oauthDeviceFlow,
+      oauthDevicePolling,
+      oauthDeviceError,
       refreshOauthStatus,
       providerUpsertMutation,
       providerDeleteMutation,
@@ -349,6 +368,9 @@ export function useProviderEditorForm(props: ProviderEditorDialogProps) {
     setStreamIdleTimeoutSeconds,
     oauthStatus,
     oauthLoading,
+    oauthDeviceFlow,
+    oauthDevicePolling,
+    oauthDeviceError,
     cx2ccSourceValue,
     setCx2ccSourceValue,
     isCodexGatewaySource,
@@ -359,6 +381,7 @@ export function useProviderEditorForm(props: ProviderEditorDialogProps) {
     save: () => runProviderEditorSave(buildSaveContext()),
     copyApiKey: () => copyApiKeyAction(buildCopyApiKeyContext()),
     handleOAuthLogin: () => oauthLoginAction(buildOAuthContext()),
+    handleOAuthDeviceLogin: () => oauthDeviceLoginAction(buildOAuthContext()),
     handleOAuthRefresh: () => oauthRefreshAction(buildOAuthContext()),
     handleOAuthDisconnect: () => oauthDisconnectAction(buildOAuthContext()),
   };
