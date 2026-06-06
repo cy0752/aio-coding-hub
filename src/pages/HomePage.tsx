@@ -149,8 +149,8 @@ export function HomePage() {
   }, [personalizedLayoutEnabled, tab]);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <div className="shrink-0 mb-5">
+    <div className="flex flex-col h-full gap-6 overflow-hidden">
+      <div className="shrink-0">
         <PageHeader
           title="首页"
           actions={
@@ -275,6 +275,7 @@ export function HomePage() {
             ? `目前还有 ${pendingSortModeSwitch.activeSessionCount} 个活跃 Session，切换模板可能导致会话中断，是否确认？`
             : undefined
         }
+        className="max-w-lg"
       >
         <div className="flex items-center justify-end gap-2">
           <Button
