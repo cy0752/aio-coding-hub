@@ -79,9 +79,9 @@ pub(crate) fn complete_current_flow<T>(
     complete: impl FnOnce() -> crate::shared::error::AppResult<T>,
 ) -> crate::shared::error::AppResult<T> {
     let mut guard = ACTIVE_FLOW.lock().unwrap_or_else(|e| e.into_inner());
-    if !guard
+    if guard
         .as_ref()
-        .is_some_and(|active| active.flow_id == flow_id)
+        .is_none_or(|active| active.flow_id != flow_id)
     {
         return Err(crate::shared::error::AppError::from(
             "OAuth flow cancelled: login attempt is no longer current".to_string(),
