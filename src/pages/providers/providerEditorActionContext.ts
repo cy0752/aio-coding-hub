@@ -129,4 +129,9 @@ export type OAuthActionContext = ProviderActionContext &
   > & {
     persistProvider: (input: ProviderUpsertInput) => Promise<ProviderSummary>;
     removeProvider: (providerId: number) => Promise<boolean>;
+    beginOAuthLoginAttempt: () => number;
+    isOAuthLoginAttemptCurrent: (attemptId: number) => boolean;
+    cancelOAuthDeviceFlow: (flowId: string) => void;
+    setActiveOAuthDeviceFlow: (attemptId: number, flowId: string) => void;
+    clearActiveOAuthDeviceFlow: (flowId: string) => void;
   };

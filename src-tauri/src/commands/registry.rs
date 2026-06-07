@@ -101,6 +101,7 @@ macro_rules! generated_command_registry {
             provider_oauth_start_flow => crate::commands::providers::provider_oauth_start_flow,
             provider_oauth_start_device_flow => crate::commands::providers::provider_oauth_start_device_flow,
             provider_oauth_poll_device_flow => crate::commands::providers::provider_oauth_poll_device_flow,
+            provider_oauth_cancel_device_flow => crate::commands::providers::provider_oauth_cancel_device_flow,
             provider_oauth_refresh => crate::commands::providers::provider_oauth_refresh,
             provider_oauth_disconnect => crate::commands::providers::provider_oauth_disconnect,
             provider_oauth_status => crate::commands::providers::provider_oauth_status,

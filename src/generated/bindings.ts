@@ -743,18 +743,25 @@ export const commands = {
     }
   },
   async providerOauthPollDeviceFlow(
-    providerId: number,
-    deviceCode: string,
-    userCode: string
+    input: ProviderOAuthDeviceCodePollInput
   ): Promise<Result<ProviderOAuthDeviceCodePollResult, string>> {
     try {
       return {
         status: "ok",
-        data: await TAURI_INVOKE("provider_oauth_poll_device_flow", {
-          providerId,
-          deviceCode,
-          userCode,
-        }),
+        data: await TAURI_INVOKE("provider_oauth_poll_device_flow", { input }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async providerOauthCancelDeviceFlow(
+    flowId: string
+  ): Promise<Result<ProviderOAuthDeviceCodeCancelResult, string>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("provider_oauth_cancel_device_flow", { flowId }),
       };
     } catch (e) {
       if (e instanceof Error) throw e;
@@ -2539,6 +2546,13 @@ export type ProviderLimitUsageRow = {
   window_weekly_start_ts: number;
   window_monthly_start_ts: number;
 };
+export type ProviderOAuthDeviceCodeCancelResult = { cancelled: boolean };
+export type ProviderOAuthDeviceCodePollInput = {
+  providerId: number;
+  flowId: string;
+  deviceCode: string;
+  userCode: string;
+};
 export type ProviderOAuthDeviceCodePollResult = {
   completed: boolean;
   provider_id: number;
@@ -2548,6 +2562,7 @@ export type ProviderOAuthDeviceCodePollResult = {
 export type ProviderOAuthDeviceCodeStartResult = {
   provider_id: number;
   provider_type: string;
+  flow_id: string;
   device_code: string;
   user_code: string;
   verification_uri: string;

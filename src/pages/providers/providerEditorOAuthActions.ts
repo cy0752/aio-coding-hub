@@ -13,7 +13,21 @@ import type { OAuthActionContext } from "./providerEditorActionContext";
 import { presentProviderEditorPayloadBuildError } from "./providerEditorFeedback";
 import { buildProviderEditorUpsertInput } from "./providerEditorSubmitModel";
 
+async function waitForOAuthDevicePollInterval(
+  ctx: OAuthActionContext,
+  attemptId: number,
+  ms: number
+) {
+  const deadline = Date.now() + ms;
+  while (ctx.isOAuthLoginAttemptCurrent(attemptId) && Date.now() < deadline) {
+    const remainingMs = deadline - Date.now();
+    await new Promise((resolve) => window.setTimeout(resolve, Math.min(remainingMs, 250)));
+  }
+}
+
 export async function handleOAuthLogin(ctx: OAuthActionContext) {
+  const attemptId = ctx.beginOAuthLoginAttempt();
+  const isCurrentAttempt = () => ctx.isOAuthLoginAttemptCurrent(attemptId);
   ctx.setOauthLoading(true);
   let autoSavedProviderId: number | null = null;
   let shouldRollbackAutoSavedProvider = false;
@@ -59,17 +73,32 @@ export async function handleOAuthLogin(ctx: OAuthActionContext) {
       targetProviderId = saved.id;
       autoSavedProviderId = saved.id;
       shouldRollbackAutoSavedProvider = true;
+      if (!isCurrentAttempt()) {
+        await rollbackAutoSavedProvider();
+        return;
+      }
     }
 
     const result = await providerOAuthStartFlow(ctx.cliKey, targetProviderId);
+    if (!isCurrentAttempt()) {
+      await rollbackAutoSavedProvider();
+      return;
+    }
     if (result.success) {
       shouldRollbackAutoSavedProvider = false;
 
       let status: Awaited<ReturnType<OAuthActionContext["refreshOauthStatus"]>> = null;
       try {
-        status = await ctx.refreshOauthStatus(targetProviderId);
+        const nextStatus = await ctx.refreshOauthStatus(targetProviderId);
+        if (!isCurrentAttempt()) {
+          return;
+        }
+        status = nextStatus;
         ctx.setOauthStatus(status);
       } catch (statusErr) {
+        if (!isCurrentAttempt()) {
+          return;
+        }
         toast("OAuth 登录成功，但读取连接状态失败，可稍后重试");
         logToConsole(
           "warn",
@@ -86,6 +115,9 @@ export async function handleOAuthLogin(ctx: OAuthActionContext) {
       let limits: Awaited<ReturnType<typeof providerOAuthFetchLimits>> = null;
       try {
         limits = await providerOAuthFetchLimits(targetProviderId);
+        if (!isCurrentAttempt()) {
+          return;
+        }
         if (!limits) {
           toast("OAuth 登录成功，但获取用量失败，可稍后重试");
           logToConsole(
@@ -100,6 +132,9 @@ export async function handleOAuthLogin(ctx: OAuthActionContext) {
           );
         }
       } catch (err) {
+        if (!isCurrentAttempt()) {
+          return;
+        }
         toast("OAuth 登录成功，但获取用量失败，可稍后重试");
         logToConsole(
           "warn",
@@ -114,6 +149,9 @@ export async function handleOAuthLogin(ctx: OAuthActionContext) {
         );
       }
 
+      if (!isCurrentAttempt()) {
+        return;
+      }
       toast("OAuth 登录成功");
       logToConsole("info", `OAuth 登录成功：${ctx.form.getValues().name || "OAuth Provider"}`, {
         cli_key: ctx.cliKey,
@@ -137,6 +175,10 @@ export async function handleOAuthLogin(ctx: OAuthActionContext) {
       });
     }
   } catch (err) {
+    if (!isCurrentAttempt()) {
+      await rollbackAutoSavedProvider();
+      return;
+    }
     await rollbackAutoSavedProvider();
     toast(`OAuth 登录失败：${String(err)}`);
     logToConsole("error", `OAuth 登录异常：${ctx.form.getValues().name || "OAuth Provider"}`, {
@@ -144,17 +186,22 @@ export async function handleOAuthLogin(ctx: OAuthActionContext) {
       error: String(err),
     });
   } finally {
-    ctx.setOauthLoading(false);
+    if (isCurrentAttempt()) {
+      ctx.setOauthLoading(false);
+    }
   }
 }
 
 export async function handleOAuthDeviceLogin(ctx: OAuthActionContext) {
+  const attemptId = ctx.beginOAuthLoginAttempt();
+  const isCurrentAttempt = () => ctx.isOAuthLoginAttemptCurrent(attemptId);
   ctx.setOauthLoading(true);
   ctx.setOauthDeviceError(null);
   ctx.setOauthDeviceFlow(null);
   ctx.setOauthDevicePolling(false);
   let autoSavedProviderId: number | null = null;
   let shouldRollbackAutoSavedProvider = false;
+  let activeFlowId: string | null = null;
 
   const rollbackAutoSavedProvider = async () => {
     if (!shouldRollbackAutoSavedProvider || !autoSavedProviderId) return;
@@ -201,27 +248,51 @@ export async function handleOAuthDeviceLogin(ctx: OAuthActionContext) {
       targetProviderId = saved.id;
       autoSavedProviderId = saved.id;
       shouldRollbackAutoSavedProvider = true;
+      if (!isCurrentAttempt()) {
+        await rollbackAutoSavedProvider();
+        return;
+      }
     }
 
     const start = await providerOAuthStartDeviceFlow(targetProviderId);
+    activeFlowId = start.flow_id;
+    if (!isCurrentAttempt()) {
+      ctx.cancelOAuthDeviceFlow(start.flow_id);
+      await rollbackAutoSavedProvider();
+      return;
+    }
+    ctx.setActiveOAuthDeviceFlow(attemptId, start.flow_id);
     ctx.setOauthDeviceFlow(start);
     ctx.setOauthDevicePolling(true);
     await openDesktopUrl(start.verification_uri);
+    if (!isCurrentAttempt()) {
+      await rollbackAutoSavedProvider();
+      return;
+    }
 
     const deadline = Date.now() + start.expires_in * 1000;
     while (Date.now() < deadline) {
       const result = await providerOAuthPollDeviceFlow(
         targetProviderId,
+        start.flow_id,
         start.device_code,
         start.user_code
       );
+      if (!isCurrentAttempt()) {
+        await rollbackAutoSavedProvider();
+        return;
+      }
       if (result.completed) {
         shouldRollbackAutoSavedProvider = false;
+        ctx.clearActiveOAuthDeviceFlow(start.flow_id);
         ctx.setOauthDevicePolling(false);
         ctx.setOauthDeviceFlow(null);
         ctx.setOauthDeviceError(null);
 
         const status = await ctx.refreshOauthStatus(targetProviderId);
+        if (!isCurrentAttempt()) {
+          return;
+        }
         ctx.setOauthStatus(status);
 
         try {
@@ -237,6 +308,9 @@ export async function handleOAuthDeviceLogin(ctx: OAuthActionContext) {
             }
           );
         }
+        if (!isCurrentAttempt()) {
+          return;
+        }
 
         toast("设备码登录成功");
         if (!ctx.editingProviderId) {
@@ -245,14 +319,34 @@ export async function handleOAuthDeviceLogin(ctx: OAuthActionContext) {
         }
         return;
       }
-      await new Promise((resolve) => window.setTimeout(resolve, start.interval * 1000));
+      await waitForOAuthDevicePollInterval(ctx, attemptId, start.interval * 1000);
+      if (!isCurrentAttempt()) {
+        await rollbackAutoSavedProvider();
+        return;
+      }
     }
 
+    if (!isCurrentAttempt()) {
+      await rollbackAutoSavedProvider();
+      return;
+    }
+    if (activeFlowId) {
+      ctx.cancelOAuthDeviceFlow(activeFlowId);
+      ctx.clearActiveOAuthDeviceFlow(activeFlowId);
+    }
     ctx.setOauthDevicePolling(false);
     ctx.setOauthDeviceError("设备码已过期，请重新开始登录。");
     await rollbackAutoSavedProvider();
     toast("设备码登录失败：设备码已过期");
   } catch (err) {
+    if (!isCurrentAttempt()) {
+      await rollbackAutoSavedProvider();
+      return;
+    }
+    if (activeFlowId) {
+      ctx.cancelOAuthDeviceFlow(activeFlowId);
+      ctx.clearActiveOAuthDeviceFlow(activeFlowId);
+    }
     ctx.setOauthDevicePolling(false);
     ctx.setOauthDeviceError(String(err));
     await rollbackAutoSavedProvider();
@@ -262,7 +356,9 @@ export async function handleOAuthDeviceLogin(ctx: OAuthActionContext) {
       error: String(err),
     });
   } finally {
-    ctx.setOauthLoading(false);
+    if (isCurrentAttempt()) {
+      ctx.setOauthLoading(false);
+    }
   }
 }
 

@@ -57,11 +57,21 @@ struct CodexOpenAiAuthClaim {
 pub(crate) struct ProviderOAuthDeviceCodeStartResult {
     pub provider_id: i64,
     pub provider_type: String,
+    pub flow_id: String,
     pub device_code: String,
     pub user_code: String,
     pub verification_uri: String,
     pub expires_in: u64,
     pub interval: u64,
+}
+
+#[derive(Debug, Clone, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProviderOAuthDeviceCodePollInput {
+    pub provider_id: i64,
+    pub flow_id: String,
+    pub device_code: String,
+    pub user_code: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
@@ -89,6 +99,11 @@ pub(crate) struct ProviderOAuthRefreshResult {
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
 pub(crate) struct ProviderOAuthDisconnectResult {
     pub success: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize, specta::Type)]
+pub(crate) struct ProviderOAuthDeviceCodeCancelResult {
+    pub cancelled: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
@@ -170,6 +185,14 @@ fn extract_codex_identity(id_token: Option<&str>) -> (Option<String>, Option<Str
     (account_id, email)
 }
 
+fn ensure_current_oauth_flow(flow_id: &str) -> Result<(), String> {
+    if crate::gateway::oauth::is_current_flow(flow_id) {
+        Ok(())
+    } else {
+        Err("OAuth flow cancelled: login attempt is no longer current".to_string())
+    }
+}
+
 async fn codex_exchange_device_code_for_tokens(
     client: &reqwest::Client,
     client_id: &str,
@@ -248,7 +271,9 @@ pub(crate) async fn provider_oauth_start_flow(
     );
 
     // 3b. Cancel any prior pending OAuth flow so its listener is dropped (frees port).
-    let mut abort_rx = crate::gateway::oauth::cancel_previous_flow();
+    let flow_lifecycle = crate::gateway::oauth::begin_flow_lifecycle();
+    let flow_id = flow_lifecycle.flow_id;
+    let mut abort_rx = flow_lifecycle.abort_rx;
 
     // 4. Bind callback listener
     let listener = crate::gateway::oauth::callback_server::bind_callback_listener(
@@ -289,6 +314,8 @@ pub(crate) async fn provider_oauth_start_flow(
         .code
         .ok_or("OAuth callback missing authorization code")?;
 
+    ensure_current_oauth_flow(&flow_id)?;
+
     // 8. Exchange code for tokens
     let client = crate::gateway::oauth::build_default_oauth_http_client()?;
     let token_set = crate::gateway::oauth::token_exchange::exchange_authorization_code(
@@ -314,22 +341,24 @@ pub(crate) async fn provider_oauth_start_flow(
     // 10. Save to provider
     let app_handle = app.clone();
     blocking::run("provider_oauth_start_flow_save", move || {
-        crate::providers::update_oauth_tokens(
-            &db,
-            provider_id,
-            "oauth",
-            provider_type,
-            &effective_token,
-            token_set.refresh_token.as_deref(),
-            id_token.as_deref(),
-            endpoints.token_url,
-            &endpoints.client_id,
-            endpoints.client_secret.as_deref(),
-            token_expires_at,
-            None,
-        )?;
-        crate::domain::provider_oauth_limits::clear_snapshot(&db, provider_id)?;
-        Ok::<(), crate::shared::error::AppError>(())
+        crate::gateway::oauth::complete_current_flow(&flow_id, || {
+            crate::providers::update_oauth_tokens(
+                &db,
+                provider_id,
+                "oauth",
+                provider_type,
+                &effective_token,
+                token_set.refresh_token.as_deref(),
+                id_token.as_deref(),
+                endpoints.token_url,
+                &endpoints.client_id,
+                endpoints.client_secret.as_deref(),
+                token_expires_at,
+                None,
+            )?;
+            crate::domain::provider_oauth_limits::clear_snapshot(&db, provider_id)?;
+            Ok(())
+        })
     })
     .await
     .map_err(Into::<String>::into)?;
@@ -382,6 +411,7 @@ pub(crate) async fn provider_oauth_start_device_flow(
         .ok_or_else(|| "no OAuth adapter for cli_key=codex".to_string())?;
     let endpoints = adapter.endpoints();
     let client = crate::gateway::oauth::build_default_oauth_http_client()?;
+    let flow_id = crate::gateway::oauth::begin_flow_lifecycle().flow_id;
 
     let response = client
         .post(CODEX_DEVICE_AUTH_USERCODE_URL)
@@ -410,6 +440,7 @@ pub(crate) async fn provider_oauth_start_device_flow(
     Ok(ProviderOAuthDeviceCodeStartResult {
         provider_id,
         provider_type: adapter.provider_type().to_string(),
+        flow_id,
         device_code: payload.device_auth_id,
         user_code: payload.user_code,
         verification_uri: CODEX_DEVICE_VERIFICATION_URL.to_string(),
@@ -423,10 +454,10 @@ pub(crate) async fn provider_oauth_start_device_flow(
 pub(crate) async fn provider_oauth_poll_device_flow(
     app: tauri::AppHandle,
     db_state: tauri::State<'_, DbInitState>,
-    provider_id: i64,
-    device_code: String,
-    user_code: String,
+    input: ProviderOAuthDeviceCodePollInput,
 ) -> Result<ProviderOAuthDeviceCodePollResult, String> {
+    ensure_current_oauth_flow(&input.flow_id)?;
+    let provider_id = input.provider_id;
     let db = ensure_db_ready(app.clone(), db_state.inner()).await?;
     let provider_cli_key =
         blocking::run("provider_oauth_poll_device_flow_load_provider_cli_key", {
@@ -458,12 +489,14 @@ pub(crate) async fn provider_oauth_poll_device_flow(
         .post(CODEX_DEVICE_AUTH_TOKEN_URL)
         .header("Content-Type", "application/json")
         .json(&serde_json::json!({
-            "device_auth_id": device_code,
-            "user_code": user_code,
+            "device_auth_id": input.device_code,
+            "user_code": input.user_code,
         }))
         .send()
         .await
         .map_err(|e| format!("device code poll failed: {e}"))?;
+
+    ensure_current_oauth_flow(&input.flow_id)?;
 
     let status = poll_response.status();
     if status == reqwest::StatusCode::FORBIDDEN || status == reqwest::StatusCode::NOT_FOUND {
@@ -475,10 +508,12 @@ pub(crate) async fn provider_oauth_poll_device_flow(
         });
     }
     if status == reqwest::StatusCode::GONE {
+        crate::gateway::oauth::cancel_flow(&input.flow_id);
         return Err("Device code 已过期，请重新开始登录。".to_string());
     }
     if !status.is_success() {
         let text = poll_response.text().await.unwrap_or_default();
+        crate::gateway::oauth::cancel_flow(&input.flow_id);
         return Err(format!("device code poll failed: {status} - {text}"));
     }
 
@@ -486,6 +521,8 @@ pub(crate) async fn provider_oauth_poll_device_flow(
         .json::<CodexDevicePollSuccess>()
         .await
         .map_err(|e| format!("device code poll parse failed: {e}"))?;
+
+    ensure_current_oauth_flow(&input.flow_id)?;
 
     let token_set = codex_exchange_device_code_for_tokens(
         &client,
@@ -509,22 +546,24 @@ pub(crate) async fn provider_oauth_poll_device_flow(
     let (_, email) = extract_codex_identity(id_token.as_deref());
 
     blocking::run("provider_oauth_poll_device_flow_save", move || {
-        crate::providers::update_oauth_tokens(
-            &db,
-            provider_id,
-            "oauth",
-            provider_type,
-            &effective_token,
-            oauth_token_set.refresh_token.as_deref(),
-            id_token.as_deref(),
-            endpoints.token_url,
-            &endpoints.client_id,
-            endpoints.client_secret.as_deref(),
-            token_expires_at,
-            email.as_deref(),
-        )?;
-        crate::domain::provider_oauth_limits::clear_snapshot(&db, provider_id)?;
-        Ok::<(), crate::shared::error::AppError>(())
+        crate::gateway::oauth::complete_current_flow(&input.flow_id, || {
+            crate::providers::update_oauth_tokens(
+                &db,
+                provider_id,
+                "oauth",
+                provider_type,
+                &effective_token,
+                oauth_token_set.refresh_token.as_deref(),
+                id_token.as_deref(),
+                endpoints.token_url,
+                &endpoints.client_id,
+                endpoints.client_secret.as_deref(),
+                token_expires_at,
+                email.as_deref(),
+            )?;
+            crate::domain::provider_oauth_limits::clear_snapshot(&db, provider_id)?;
+            Ok(())
+        })
     })
     .await
     .map_err(Into::<String>::into)?;
@@ -541,6 +580,20 @@ pub(crate) async fn provider_oauth_poll_device_flow(
         provider_id,
         provider_type: provider_type.to_string(),
         expires_at: token_expires_at,
+    })
+}
+
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn provider_oauth_cancel_device_flow(
+    flow_id: String,
+) -> Result<ProviderOAuthDeviceCodeCancelResult, String> {
+    if flow_id.trim().is_empty() {
+        return Ok(ProviderOAuthDeviceCodeCancelResult { cancelled: false });
+    }
+
+    Ok(ProviderOAuthDeviceCodeCancelResult {
+        cancelled: crate::gateway::oauth::cancel_flow(flow_id.trim()),
     })
 }
 

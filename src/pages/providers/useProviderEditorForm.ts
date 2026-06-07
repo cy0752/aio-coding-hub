@@ -40,6 +40,8 @@ import {
 } from "./providerEditorOAuthActions";
 import { runProviderEditorSave } from "./providerEditorSaveRunner";
 import { useProviderEditorEffects } from "./useProviderEditorEffects";
+import { providerOAuthCancelDeviceFlow } from "../../services/providers/providers";
+import { logToConsole } from "../../services/consoleLog";
 
 export function useProviderEditorForm(props: ProviderEditorDialogProps) {
   const { open, onOpenChange, onSaved, codexProviders = [] } = props;
@@ -88,6 +90,8 @@ export function useProviderEditorForm(props: ProviderEditorDialogProps) {
   } | null>(null);
   const [codexGatewayBaseOrigin, setCodexGatewayBaseOrigin] = useState<string | null>(null);
   const oauthStatusRequestSeqRef = useRef(0);
+  const oauthLoginAttemptSeqRef = useRef(0);
+  const activeOAuthDeviceFlowRef = useRef<string | null>(null);
   const queryClient = useQueryClient();
   const providerUpsertMutation = useProviderUpsertMutation();
   const providerDeleteMutation = useProviderDeleteMutation();
@@ -142,6 +146,61 @@ export function useProviderEditorForm(props: ProviderEditorDialogProps) {
     [editingProviderId, queryClient]
   );
 
+  const cancelOAuthDeviceFlow = useCallback((flowId: string) => {
+    void providerOAuthCancelDeviceFlow(flowId).catch((err) => {
+      logToConsole("warn", "取消设备码登录失败", { error: String(err) });
+    });
+  }, []);
+
+  const clearActiveOAuthDeviceFlow = useCallback((flowId: string) => {
+    if (activeOAuthDeviceFlowRef.current === flowId) {
+      activeOAuthDeviceFlowRef.current = null;
+    }
+  }, []);
+
+  const cancelActiveOAuthLoginAttempt = useCallback(
+    (resetUi = true) => {
+      oauthLoginAttemptSeqRef.current += 1;
+      const activeFlowId = activeOAuthDeviceFlowRef.current;
+      activeOAuthDeviceFlowRef.current = null;
+      if (activeFlowId) {
+        cancelOAuthDeviceFlow(activeFlowId);
+      }
+      if (!resetUi) return;
+      setOauthDevicePolling(false);
+      setOauthDeviceFlow(null);
+      setOauthDeviceError(null);
+      setOauthLoading(false);
+    },
+    [cancelOAuthDeviceFlow]
+  );
+
+  const beginOAuthLoginAttempt = useCallback(() => {
+    cancelActiveOAuthLoginAttempt();
+    oauthLoginAttemptSeqRef.current += 1;
+    return oauthLoginAttemptSeqRef.current;
+  }, [cancelActiveOAuthLoginAttempt]);
+
+  const isOAuthLoginAttemptCurrent = useCallback((attemptId: number) => {
+    return oauthLoginAttemptSeqRef.current === attemptId;
+  }, []);
+
+  const setActiveOAuthDeviceFlow = useCallback((attemptId: number, flowId: string) => {
+    if (oauthLoginAttemptSeqRef.current === attemptId) {
+      activeOAuthDeviceFlowRef.current = flowId;
+    }
+  }, []);
+
+  const requestOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (!nextOpen) {
+        cancelActiveOAuthLoginAttempt();
+      }
+      onOpenChange(nextOpen);
+    },
+    [cancelActiveOAuthLoginAttempt, onOpenChange]
+  );
+
   useProviderEditorEffects({
     open,
     mode,
@@ -158,6 +217,7 @@ export function useProviderEditorForm(props: ProviderEditorDialogProps) {
     editProviderSnapshotRef,
     baseUrlRowSeqRef,
     oauthStatusRequestSeqRef,
+    cancelActiveOAuthLoginAttempt,
     newBaseUrlRow,
     setBaseUrlMode,
     setBaseUrlRows,
@@ -232,7 +292,7 @@ export function useProviderEditorForm(props: ProviderEditorDialogProps) {
       editingProviderId,
       editProvider,
       open,
-      onOpenChange,
+      onOpenChange: requestOpenChange,
       onSaved,
       copyingApiKey,
       setCopyingApiKey,
@@ -245,7 +305,7 @@ export function useProviderEditorForm(props: ProviderEditorDialogProps) {
       editingProviderId,
       editProvider,
       open,
-      onOpenChange,
+      requestOpenChange,
       onSaved,
       copyingApiKey,
       apiKeyConfigured,
@@ -257,7 +317,7 @@ export function useProviderEditorForm(props: ProviderEditorDialogProps) {
     (): SaveActionContext => ({
       editProvider,
       open,
-      onOpenChange,
+      onOpenChange: requestOpenChange,
       onSaved,
       ...buildPayloadContext(),
       saving,
@@ -271,7 +331,7 @@ export function useProviderEditorForm(props: ProviderEditorDialogProps) {
     [
       editProvider,
       open,
-      onOpenChange,
+      requestOpenChange,
       onSaved,
       buildPayloadContext,
       saving,
@@ -287,7 +347,7 @@ export function useProviderEditorForm(props: ProviderEditorDialogProps) {
     (): OAuthActionContext => ({
       editProvider,
       open,
-      onOpenChange,
+      onOpenChange: requestOpenChange,
       onSaved,
       ...buildPayloadContext(),
       form: { getValues: form.getValues, setValue: form.setValue },
@@ -303,12 +363,17 @@ export function useProviderEditorForm(props: ProviderEditorDialogProps) {
       setOauthDeviceError,
       persistProvider: (input) => providerUpsertMutation.mutateAsync({ input }),
       removeProvider: (providerId) => providerDeleteMutation.mutateAsync({ cliKey, providerId }),
+      beginOAuthLoginAttempt,
+      isOAuthLoginAttemptCurrent,
+      cancelOAuthDeviceFlow,
+      setActiveOAuthDeviceFlow,
+      clearActiveOAuthDeviceFlow,
     }),
     [
       cliKey,
       editProvider,
       open,
-      onOpenChange,
+      requestOpenChange,
       onSaved,
       buildPayloadContext,
       form.getValues,
@@ -320,6 +385,11 @@ export function useProviderEditorForm(props: ProviderEditorDialogProps) {
       refreshOauthStatus,
       providerUpsertMutation,
       providerDeleteMutation,
+      beginOAuthLoginAttempt,
+      isOAuthLoginAttemptCurrent,
+      cancelOAuthDeviceFlow,
+      setActiveOAuthDeviceFlow,
+      clearActiveOAuthDeviceFlow,
     ]
   );
 
@@ -327,7 +397,7 @@ export function useProviderEditorForm(props: ProviderEditorDialogProps) {
     mode,
     cliKey,
     open,
-    onOpenChange,
+    onOpenChange: requestOpenChange,
     saving,
     title,
     description,

@@ -79,7 +79,7 @@ export function OAuthSection(props: { form: UseProviderEditorFormReturn }) {
                   <Button
                     onClick={handleOAuthDeviceLogin}
                     variant="secondary"
-                    disabled={saving || oauthLoading || oauthDevicePolling}
+                    disabled={saving || (oauthLoading && !oauthDevicePolling)}
                   >
                     设备码登录
                   </Button>
